@@ -247,6 +247,33 @@ iframe.loaded {
   opacity: 1;
 }
 
+.external-link-btn {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  z-index: 3;
+  background: rgba(13, 17, 23, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text-color);
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid var(--card-border);
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.external-link-btn:hover {
+  background: var(--accent-color);
+  color: #0d1117;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(88, 166, 255, 0.3);
+  border-color: var(--accent-color);
+}
+
 @media (max-width: 768px) {
   .iframe-container {
     height: 70vh;
