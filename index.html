@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PhyloCov</title>
+    <meta name="description" content="PhyloCov: An interactive web-based framework for exploring ecological covariates for integrated phylodynamic models.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <!-- Hero Section -->
+    <header class="hero">
+      <div class="hero-background"></div>
+      <div class="hero-content">
+        <h1>PhyloCov</h1>
+        <p class="subtitle">An interactive web-based framework for exploring ecological covariates for integrated phylodynamic models</p>
+        <div class="scroll-indicator">
+          <span>Explore</span>
+          <div class="arrow">↓</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="content-flow">
+      <!-- Section 1: Intro Text -->
+      <section class="content-section text-content fade-in-section">
+        <div class="container">
+          <h2>Background & Aims</h2>
+          <p>Quantifying the ecological drivers of pathogen transmission remains a key challenge in integrated phylodynamic modeling. While high-resolution data on climate, land use, and vector distributions exist, they remain underutilized due to limited accessibility and integration tools.</p>
+          <p>We present <strong>PhyloCov</strong>, a web-based application built on Google Earth Engine (GEE), designed to host, explore, and extract time-varying ecological covariates relevant to pathogen transmission. The platform aims to support streamlined access to Earth observation datasets as well as relevant species distribution layers to enhance the application of transmission models.</p>
+        </div>
+      </section>
+
+      <section class="content-section text-content fade-in-section">
+        <div class="container">
+          <h2>Methods & Results</h2>
+          <p>PhyloCov leverages GEE’s extensive data catalog and app deployment system to provide users with interactive, time-aware selection tools for covariates such as precipitation, temperature, land cover, vegetation indices, and vector suitability.</p>
+          <p>Feature extraction enables point-and-region sampling over customizable timeframes. While pathogen-specific covariate prioritization is under development, the current version enables users to export model-ready covariate information for incorporation into phylodynamic inference pipelines.</p>
+        </div>
+      </section>
+
+      <!-- Section 2: Interactive App -->
+      <section class="content-section interactive-app fade-in-section">
+        <div class="app-header">
+          <h2>Interactive Extraction</h2>
+          <p>Explore and extract ecological covariates. This tool currently enables extraction at the country level.</p>
+        </div>
+        <div class="iframe-container">
+          <div class="media-placeholder">
+            <div class="spinner"></div>
+          </div>
+          <iframe 
+            id="gee-iframe"
+            title="PhyloCov Workspace"
+            src="https://ee-graemedor.projects.earthengine.app/view/phylocov"
+            frameborder="0"
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads"
+          ></iframe>
+        </div>
+      </section>
+
+      <!-- Section 3: Next Steps -->
+      <section class="content-section text-content fade-in-section">
+        <div class="container">
+          <h2>Coming Soon: Extraction by Shapefile</h2>
+          <p>The next iteration of the tool will significantly expand extraction capabilities. Rather than being limited to country-level boundaries, you will be able to upload custom shapefiles or draw specific polygons to extract localized ecological data perfectly tailored to your study region.</p>
+        </div>
+      </section>
+
+      <section class="content-section text-content fade-in-section" style="margin-bottom: 5rem;">
+        <div class="container">
+          <h2>Implications</h2>
+          <p>By centralizing ecological covariate data exploration, visualization, and extraction in an accessible interface, PhyloCov facilitates reproducible integration of environmental drivers into infectious disease modeling.</p>
+          <p>This tool will support researchers seeking to understand ecological influences on pathogen spread, particularly in low-resource settings where such data are often fragmented. Future updates will focus on pathogen-specific categorisation and API functionality for large-scale data extraction. PhyloCov serves as a platform to enhance the application of transmission models by making ecological covariate data readily accessible for integrated phylodynamic studies.</p>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
