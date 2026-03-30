@@ -46,28 +46,20 @@
     </header>
 
     <main class="content-flow">
-      <!-- Section 1: Intro Text -->
+      <!-- Section 1: Introduction -->
       <section class="content-section text-content fade-in-section">
         <div class="container">
           <h2>Background & Aims</h2>
-          <p>Quantifying the ecological drivers of pathogen transmission remains a key challenge in integrated phylodynamic modeling. While high-resolution data on climate, land use, and vector distributions exist, they remain underutilized due to limited accessibility and integration tools.</p>
-          <p>We present <strong>PhyloCov</strong>, a web-based application built on Google Earth Engine (GEE), designed to host, explore, and extract time-varying ecological covariates relevant to pathogen transmission. The platform aims to support streamlined access to Earth observation datasets as well as relevant species distribution layers to enhance the application of transmission models.</p>
+          <p>Quantifying the ecological drivers of pathogen transmission remains a key challenge in integrated phylodynamic modeling. PhyloCov bridges this gap by providing an accessible, web-based platform built on Google Earth Engine to host, explore, and extract time-varying ecological covariates.</p>
+          <p>The platform supports two distinct analytical pipelines to enhance the application of transmission models: continuous phylodynamic analysis (via GeoJSON extraction) and discrete phylodynamic analysis (via Shapefile input extraction for GLMs).</p>
         </div>
       </section>
 
-      <section class="content-section text-content fade-in-section">
-        <div class="container">
-          <h2>Methods & Results</h2>
-          <p>PhyloCov leverages GEE’s extensive data catalog and app deployment system to provide users with interactive, time-aware selection tools for covariates such as precipitation, temperature, land cover, vegetation indices, and vector suitability.</p>
-          <p>Feature extraction enables point-and-region sampling over customizable timeframes. While pathogen-specific covariate prioritization is under development, the current version enables users to export model-ready covariate information for incorporation into phylodynamic inference pipelines.</p>
-        </div>
-      </section>
-
-      <!-- Section 2: Interactive App -->
-      <section class="content-section interactive-app fade-in-section">
+      <!-- Section 2: Continuous Phylodynamics (Interactive App) -->
+      <section class="content-section interactive-app fade-in-section" style="padding-bottom: 2rem;">
         <div class="app-header">
-          <h2>Interactive Extraction</h2>
-          <p>Explore and extract ecological covariates. This tool currently enables extraction at the country level.</p>
+          <h2>Pipeline 1: Continuous Phylodynamics</h2>
+          <p>Explore and extract ecological covariates in GeoJSON format. This path is designed for continuous-style phylodynamic analysis, generating environmental data perfectly formatted for post-hoc and landscape analyses using tools like Seraphim.</p>
         </div>
         <div class="iframe-container">
           <div class="media-placeholder">
@@ -86,19 +78,29 @@
         </div>
       </section>
 
-      <!-- Section 3: Next Steps -->
+      <!-- Section 3: Discrete Phylodynamics (Upcoming Feature) -->
       <section class="content-section text-content fade-in-section">
         <div class="container">
-          <h2>Coming Soon: Extraction by Shapefile</h2>
-          <p>The next iteration of the tool will significantly expand extraction capabilities. Rather than being limited to country-level boundaries, you will be able to upload custom shapefiles or draw specific polygons to extract localized ecological data perfectly tailored to your study region.</p>
+          <h2>Pipeline 2: Discrete Phylodynamics (GLM)</h2>
+          <p>The second pipeline allows users to input a point or polygon shapefile to extract covariate data formatted specifically for discrete phylodynamic approaches using Generalized Linear Models (GLM) in software like BEAST.</p>
+          
+          <h3 style="font-size: 1.5rem; margin-top: 2rem; margin-bottom: 1rem; color: #c9d1d9;">GLM Data Format Integration</h3>
+          <p>In this context, the terms <em>predictor</em> and <em>covariate</em> are interchangeable. PhyloCov generates predictor files as comma-separated value (CSV) matrices matching the exact format required by BEAST for setting up GLM-CTMC location traits:</p>
+          <ul style="padding-left: 1.5rem; margin-bottom: 1.5rem;">
+            <li style="color: #8b949e; margin-bottom: 0.75rem; line-height: 1.6;"><strong>Pairwise Predictors:</strong> Output as a square matrix (e.g., flight matrix, intra-continental distance matrix). The different locations serve as alphabetically ordered row and column names, with rows denoting the origin and columns the destination.</li>
+            <li style="color: #8b949e; line-height: 1.6;"><strong>Origin-Destination Predictors:</strong> Output as a two-column table with alphabetically ordered location names mapped to predictor values.</li>
+          </ul>
+          
+          <p>Once extracted, these files can be easily loaded into the "Sites" tab in BEAST by clicking "Setup GLM" and "Import Predictors". Within BEAST, these predictors can be log-transformed and standardized to inform the rates of spread between geographic locations.</p>
         </div>
       </section>
 
+      <!-- Section 4: Implications -->
       <section class="content-section text-content fade-in-section" style="margin-bottom: 5rem;">
         <div class="container">
           <h2>Implications</h2>
-          <p>By centralizing ecological covariate data exploration, visualization, and extraction in an accessible interface, PhyloCov facilitates reproducible integration of environmental drivers into infectious disease modeling.</p>
-          <p>This tool will support researchers seeking to understand ecological influences on pathogen spread, particularly in low-resource settings where such data are often fragmented. Future updates will focus on pathogen-specific categorisation and API functionality for large-scale data extraction. PhyloCov serves as a platform to enhance the application of transmission models by making ecological covariate data readily accessible for integrated phylodynamic studies.</p>
+          <p>By streamlining ecological covariate extraction and formatting them specifically for continuous or discrete downstream analyses, PhyloCov facilitates the reproducible integration of environmental drivers into infectious disease modeling.</p>
+          <p>Future updates will focus on pathogen-specific categorisation and API functionality for large-scale data extraction across both pipelines.</p>
         </div>
       </section>
     </main>
