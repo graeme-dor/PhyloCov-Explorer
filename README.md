@@ -27,18 +27,6 @@ Supply custom point or polygon shapefiles to extract specific covariate data. Ph
 3. **Datasets:** Browse the comprehensive catalog of currently hosted ecological covariates (including resolution, sources, and temporality).
 4. **Extraction:** Export the generated GeoJSON or CSV matrices directly to your local machine for immediate deployment in your phylodynamic inference pipelines.
 
-## Development & Hosting
-
-PhyloCov-Explorer is built as a static site bundled with Vite to ensure blazing fast performance. The platform leverages Google Earth Engine's deployment system for the analytical backend, while the frontend is automatically hosted and maintained via GitHub Pages.
-
-If you wish to run the interface locally for development:
-```bash
-git clone https://github.com/graeme-dor/PhyloCov-Explorer.git
-cd PhyloCov-Explorer
-npm install
-npm run dev
-```
-
 ## Citing PhyloCov
 
 If you utilize PhyloCov-Explorer for your research, please refer to the website's **[About & Methods](https://graeme-dor.github.io/PhyloCov-Explorer/about.html)** tab for up-to-date citation instructions concerning the associated publication.
