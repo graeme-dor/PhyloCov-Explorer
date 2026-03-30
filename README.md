@@ -1,8 +1,12 @@
 # PhyloCov-Explorer
 
+[![Website Status](https://img.shields.io/website?url=https%3A%2F%2Fgraeme-dor.github.io%2FPhyloCov-Explorer%2F&up_message=online&down_message=offline)](https://graeme-dor.github.io/PhyloCov-Explorer/)
+
+**[Access the Live Application Here](https://graeme-dor.github.io/PhyloCov-Explorer/)**
+
 **PhyloCov-Explorer** is an interactive, web-based framework built on Google Earth Engine (GEE) designed to host, explore, and extract time-varying ecological covariates relevant to pathogen transmission modeling.
 
-This platform bridges the gap in integrated phylodynamic modeling by providing streamlined access to high-resolution Earth observation datasets (e.g., climate, land use, vector distributions) directly in the browser.
+This platform bridges the gap in integrated phylodynamic modeling by providing streamlined access to high-resolution Earth observation datasets (e.g., climate, land use, vector distributions) directly in the browser—fully alleviating the need for complex local GIS/remote sensing setups.
 
 ![PhyloCov Web Application Preview](https://github.com/graeme-dor/PhyloCov-Explorer/assets/placeholder-if-you-want-to-add-one)
 
@@ -10,41 +14,31 @@ This platform bridges the gap in integrated phylodynamic modeling by providing s
 
 PhyloCov focuses on accommodating two distinct paths for downstream analysis:
 
-1. **Continuous Phylodynamics (GeoJSON)**: Extract covariate data in GeoJSON format. This environmental data is instantly ready for post-hoc and landscape analyses tools, such as Seraphim.
-2. **Discrete Phylodynamics (Shapefile / GLM)**: Supply custom point or polygon shapefiles to extract specific covariate data. PhyloCov formats these cleanly into pairwise or origin-destination CSV matrices perfectly formatted for Generalized Linear Model (GLM) integration within software like BEAST.
+### 1. Continuous Phylodynamics (Interactive Extraction)
+Extract covariate data in **GeoJSON** format directly from the interactive map interface. This environmental data is instantly ready for post-hoc and landscape analyses using tools such as Seraphim. 
 
-## Development Setup
+### 2. Discrete Phylodynamics (Shapefile / GLM)
+Supply custom point or polygon shapefiles to extract specific covariate data. PhyloCov automatically aggregates and formats these inputs into pairwise or origin-destination **CSV matrices**, constructed to exactly match the Generalized Linear Model (GLM) integration requirements for software like BEAST.
 
-This website is built with vanilla HTML, CSS, and JS, and bundled via [Vite](https://vitejs.dev/) for blazing fast performance and simple, dependency-free Github Pages deployment.
+## How to Use
 
-### Prerequisites
+1. Navigate to the **[PhyloCov-Explorer Application](https://graeme-dor.github.io/PhyloCov-Explorer/)**.
+2. **App:** Use the interactive mapping tools to select your region of interest, timeframes, and desired environmental layers.
+3. **Datasets:** Browse the comprehensive catalog of currently hosted ecological covariates (including resolution, sources, and temporality).
+4. **Extraction:** Export the generated GeoJSON or CSV matrices directly to your local machine for immediate deployment in your phylodynamic inference pipelines.
 
-You need [Node.js](https://nodejs.org/) installed on your machine.
+## Development & Hosting
 
-### Installation
+PhyloCov-Explorer is built as a static site bundled with Vite to ensure blazing fast performance. The platform leverages Google Earth Engine's deployment system for the analytical backend, while the frontend is automatically hosted and maintained via GitHub Pages.
 
-Clone the repository and install the Vite dependencies:
-
+If you wish to run the interface locally for development:
 ```bash
 git clone https://github.com/graeme-dor/PhyloCov-Explorer.git
 cd PhyloCov-Explorer
 npm install
-```
-
-### Local Development
-
-Run the local development server (with instant hot-reloading):
-
-```bash
 npm run dev
 ```
 
-The site will now be running locally at `http://localhost:5173/`.
-
-## Deployment
-
-The live website is completely automated. Any code pushed to the `main` branch triggers the GitHub Actions workflow (`.github/workflows/deploy.yml`), which automatically builds and updates the site on GitHub Pages.
-
 ## Citing PhyloCov
 
-If you use PhyloCov in your research, please refer to the website's **About & Methods** tab for up-to-date citation instructions concerning the related publication.
+If you utilize PhyloCov-Explorer for your research, please refer to the website's **[About & Methods](https://graeme-dor.github.io/PhyloCov-Explorer/about.html)** tab for up-to-date citation instructions concerning the associated publication.
