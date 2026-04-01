@@ -41,10 +41,45 @@
     </header>
 
     <main class="content-flow">
-      <section class="content-section text-content fade-in-section is-visible">
-        <div class="container">
-          <h2>Data Catalog</h2>
-          <p>Coming soon: Detailed descriptions, sources, and resolutions of the covariates such as precipitation, temperature, land cover, and vector suitability hosted in the platform.</p>
+      <section class="content-section fade-in-section is-visible">
+        <div class="container" style="max-width: 1200px; margin: 0 auto;">
+          <h2>Climate Datasets</h2>
+          <p>Explore the high-resolution climate covariates currently integrated within the PhyloCov extraction platform. These layers provide crucial data on temperature, precipitation, and humidity for your models.</p>
+          
+          <div class="dataset-grid">
+            <!-- ERA5 Card -->
+            <article class="dataset-card">
+              <img src="/era5_temperature.png" alt="ERA5 Temperature Map" class="dataset-thumb">
+              <div class="dataset-content">
+                <span class="dataset-tag">Climate / Atmosphere</span>
+                <h3 class="dataset-title">ERA5 Daily Aggregates</h3>
+                <div class="dataset-meta">
+                  <strong>Bands:</strong> Temperature, Precipitation, Humidity<br>
+                  <strong>Resolution:</strong> 27830 meters<br>
+                  <strong>Source:</strong> ECMWF / Copernicus
+                </div>
+                <p class="dataset-desc">ERA5 is the fifth generation ECMWF reanalysis. It provides hourly estimates of a large number of atmospheric, land and oceanic climate variables. This dataset is aggregated to daily resolutions within PhyloCov.</p>
+                <a href="https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_DAILY" target="_blank" class="dataset-btn">View in GEE Catalog ↗</a>
+              </div>
+            </article>
+
+            <!-- CHIRP Card -->
+            <article class="dataset-card">
+              <img src="/chirp_precipitation.png" alt="CHIRP Precipitation Map" class="dataset-thumb">
+              <div class="dataset-content">
+                <span class="dataset-tag">Climate / Precipitation</span>
+                <h3 class="dataset-title">CHIRPS Daily Precipitation</h3>
+                <div class="dataset-meta">
+                  <strong>Bands:</strong> Precipitation<br>
+                  <strong>Resolution:</strong> 5566 meters<br>
+                  <strong>Source:</strong> UCSB / CHC
+                </div>
+                <p class="dataset-desc">Climate Hazards Group InfraRed Precipitation with Station data (CHIRPS) is a 30+ year quasi-global rainfall dataset. It incorporates satellite imagery with in-situ station data to create gridded rainfall time series.</p>
+                <a href="https://developers.google.com/earth-engine/datasets/catalog/UCSB-CHG_CHIRPS_DAILY" target="_blank" class="dataset-btn">View in GEE Catalog ↗</a>
+              </div>
+            </article>
+          </div>
+          
         </div>
       </section>
     </main>
