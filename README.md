@@ -4,7 +4,7 @@
 
 **[Access the Live Application Here](https://graeme-dor.github.io/PhyloCov-Explorer/)**
 
-**PhyloCov-Explorer** is an interactive, web-based framework built on Google Earth Engine (GEE) designed to host, explore, and extract time-varying ecological covariates relevant to pathogen transmission modeling.
+**PhyloCov-Explorer** is an interactive, web-based framework built on Google Earth Engine (GEE) designed to host, explore, and extract time-varying environmental covariates relevant to modeling the transmission of climate-sensitive pathogens.
 
 This platform bridges the gap in integrated phylodynamic modeling by providing streamlined access to high-resolution Earth observation datasets (e.g., climate, land use, vector distributions) directly in the browser—fully alleviating the need for complex local GIS/remote sensing setups.
 
