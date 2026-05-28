@@ -41,6 +41,62 @@
     </header>
 
     <main class="content-flow">
+      <section class="content-section fade-in-section is-visible" style="padding-bottom: 2rem;">
+        <div class="container" style="max-width: 1200px; margin: 0 auto;">
+          <h2>Large Scale Data Export</h2>
+          <p>Need to download massive datasets like full-country MODIS NDVI or SRTM? Use our backend processing tool to avoid browser timeouts and size limits.</p>
+          
+          <div class="export-tool-container">
+            <form id="exportForm" class="export-form">
+              <div class="form-group">
+                <label for="dataset">Dataset</label>
+                <select id="dataset" name="dataset" required>
+                  <option value="chirps">CHIRPS Daily Precipitation</option>
+                  <option value="era5">ERA5 Daily Aggregates</option>
+                  <option value="modis_ndvi">MODIS NDVI (MOD13Q1)</option>
+                  <option value="srtm">SRTM Elevation (30m)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="country">Country</label>
+                <input type="text" id="country" name="country" placeholder="e.g. South Africa" required>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="start_date">Start Date</label>
+                  <input type="date" id="start_date" name="start_date" value="2020-01-01" required>
+                </div>
+                <div class="form-group">
+                  <label for="end_date">End Date</label>
+                  <input type="date" id="end_date" name="end_date" value="2020-01-31" required>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="scale">Resolution Scale (meters)</label>
+                <input type="number" id="scale" name="scale" value="5000" min="30" required>
+              </div>
+
+              <button type="submit" class="export-btn" id="exportBtn">Start Export</button>
+            </form>
+
+            <div class="export-status" id="exportStatus" style="display: none;">
+              <h3>Export Status</h3>
+              <div class="status-indicator" id="statusIndicator">
+                <span class="status-dot"></span>
+                <span id="statusText">SUBMITTED</span>
+              </div>
+              <p id="statusMessage" class="status-message">Your export has been submitted to Earth Engine. It may take several minutes to process.</p>
+              <div id="downloadContainer" style="display: none; margin-top: 1rem;">
+                <a href="#" id="downloadLink" class="dataset-btn" target="_blank">Download GeoTIFF ⬇</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="content-section fade-in-section is-visible">
         <div class="container" style="max-width: 1200px; margin: 0 auto;">
           <h2>Climate Datasets</h2>
