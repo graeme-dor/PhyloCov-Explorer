@@ -212,10 +212,12 @@ def get_export_download_url(task_id: str):
         blob = blobs[0]
             
         # 3. Generate a signed URL
+        # We must provide the service_account_email so Cloud Run uses the IAM Credentials API to sign it
         url = blob.generate_signed_url(
             version="v4",
             expiration=timedelta(hours=1),
-            method="GET"
+            method="GET",
+            service_account_email="phylocov-exporter@ee-graemedor.iam.gserviceaccount.com"
         )
         
         return {"download_url": url}
