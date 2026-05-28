@@ -6,6 +6,8 @@ import ee
 from google.cloud import storage
 from datetime import timedelta
 from typing import Optional
+import google.auth
+from google.auth.transport import requests
 app = FastAPI(title="PhyloCov Backend Export Service")
 
 # CORS support for future frontend integration
@@ -212,12 +214,17 @@ def get_export_download_url(task_id: str):
         blob = blobs[0]
             
         # 3. Generate a signed URL
-        # We must provide the service_account_email so Cloud Run uses the IAM Credentials API to sign it
+        # We must provide the service_account_email and access_token so Cloud Run uses the IAM Credentials API to sign it
+        credentials, _ = google.auth.default()
+        if not credentials.valid:
+            credentials.refresh(requests.Request())
+            
         url = blob.generate_signed_url(
             version="v4",
             expiration=timedelta(hours=1),
             method="GET",
-            service_account_email="phylocov-exporter@ee-graemedor.iam.gserviceaccount.com"
+            service_account_email="phylocov-exporter@ee-graemedor.iam.gserviceaccount.com",
+            access_token=credentials.token
         )
         
         return {"download_url": url}
