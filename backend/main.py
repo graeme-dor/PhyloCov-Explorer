@@ -3,7 +3,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import ee
-
+from google.cloud import storage
+from datetime import timedelta
 app = FastAPI(title="PhyloCov Backend Export Service")
 
 # CORS support for future frontend integration
@@ -150,3 +151,62 @@ def get_export_status(task_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving task status: {str(e)}")
+
+@app.get("/exports/{task_id}/download")
+def get_export_download_url(task_id: str):
+    try:
+        # 1. Check task status
+        task_status_list = ee.data.getTaskStatus(task_id)
+        if not task_status_list or len(task_status_list) == 0:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        task_info = task_status_list[0]
+        if task_info.get("state") != "COMPLETED":
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Task is not completed. Current state: {task_info.get('state')}"
+            )
+        
+        # 2. Reconstruct the GCS prefix based on the task description or id
+        # EE batch exports usually create files with the prefix we provided, potentially split if very large.
+        # However, for our scale, it's typically one file.
+        # We need to list the bucket and find the file that matches the prefix.
+        client = storage.Client(project=PROJECT_ID)
+        bucket = client.bucket(GCS_BUCKET)
+        
+        # The file_prefix was something like exports/dataset/...
+        # But we don't have the original file_prefix stored here.
+        # Fortunately, Earth Engine stores the destination URIs in the task_info!
+        dest_uris = task_info.get("destination_uris", [])
+        if not dest_uris:
+            raise HTTPException(status_code=404, detail="No output files found for this task")
+        
+        gcs_uri = dest_uris[0] # e.g. "gs://bucket-quickstart_ee-graemedor/exports/..."
+        if not gcs_uri.startswith("gs://"):
+            raise HTTPException(status_code=500, detail="Unknown destination URI format")
+            
+        # Parse the GCS URI
+        path_parts = gcs_uri.replace("gs://", "").split("/")
+        blob_bucket = path_parts[0]
+        blob_name = "/".join(path_parts[1:])
+        
+        if blob_bucket != GCS_BUCKET:
+            bucket = client.bucket(blob_bucket)
+            
+        blob = bucket.blob(blob_name)
+        if not blob.exists():
+            raise HTTPException(status_code=404, detail="Exported file not found in Google Cloud Storage")
+            
+        # 3. Generate a signed URL
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(hours=1),
+            method="GET"
+        )
+        
+        return {"download_url": url}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating download URL: {str(e)}")
