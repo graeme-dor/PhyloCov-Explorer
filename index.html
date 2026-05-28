@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
@@ -61,20 +62,63 @@
           <h2>Pipeline 1: Continuous Phylodynamics</h2>
           <p>Explore and extract ecological covariates in GeoJSON format. This path is designed for continuous-style phylodynamic analysis, generating environmental data perfectly formatted for post-hoc and landscape analyses using tools like Seraphim.</p>
         </div>
-        <div class="iframe-container">
-          <div class="media-placeholder">
-            <div class="spinner"></div>
+        </div>
+        <div class="map-wrapper">
+          <div id="map" class="leaflet-map"></div>
+          
+          <!-- Native UI Overlay -->
+          <div class="map-overlay-panel">
+            <h3>Visualise & Export</h3>
+            <form id="nativeMapForm" class="map-form">
+              <div class="form-group">
+                <label for="map_dataset">Dataset</label>
+                <select id="map_dataset" name="dataset" required>
+                  <option value="chirps">CHIRPS Daily Precipitation</option>
+                  <option value="era5">ERA5 Daily Aggregates</option>
+                  <option value="modis_ndvi">MODIS NDVI (MOD13Q1)</option>
+                  <option value="srtm">SRTM Elevation (30m)</option>
+                </select>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="map_start_date">Start Date</label>
+                  <input type="date" id="map_start_date" name="start_date" value="2020-01-01" required>
+                </div>
+                <div class="form-group">
+                  <label for="map_end_date">End Date</label>
+                  <input type="date" id="map_end_date" name="end_date" value="2020-01-31" required>
+                </div>
+              </div>
+              
+              <button type="button" class="btn-secondary" id="updateMapBtn">Update Map</button>
+
+              <hr class="panel-divider">
+
+              <div class="form-group">
+                <label for="map_country">Export Country</label>
+                <input type="text" id="map_country" name="country" placeholder="e.g. South Africa" required>
+              </div>
+
+              <div class="form-group">
+                <label for="map_scale">Export Resolution (m)</label>
+                <input type="number" id="map_scale" name="scale" value="5000" min="30" required>
+              </div>
+
+              <button type="submit" class="export-btn" id="mapExportBtn">Start Backend Export</button>
+            </form>
+
+            <div class="export-status" id="mapExportStatus" style="display: none; margin-top: 1rem;">
+              <div class="status-indicator">
+                <span class="status-dot" id="mapStatusDot"></span>
+                <span id="mapStatusText">SUBMITTED</span>
+              </div>
+              <p id="mapStatusMessage" class="status-message" style="font-size: 0.85rem;"></p>
+              <div id="mapDownloadContainer" style="display: none; margin-top: 0.5rem;">
+                <a href="#" id="mapDownloadLink" class="dataset-btn" style="padding: 0.5rem 1rem; font-size: 0.9rem;" target="_blank">Download GeoTIFF ⬇</a>
+              </div>
+            </div>
           </div>
-          <iframe 
-            id="gee-iframe"
-            title="PhyloCov Workspace"
-            src="https://ee-graemedor.projects.earthengine.app/view/phylocov"
-            frameborder="0"
-            sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads"
-          ></iframe>
-          <a href="https://ee-graemedor.projects.earthengine.app/view/phylocov" target="_blank" rel="noopener noreferrer" class="external-link-btn">
-            Open in new tab ↗
-          </a>
         </div>
       </section>
 
@@ -105,6 +149,7 @@
       </section>
     </main>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script type="module" src="/main.js"></script>
   </body>
 </html>

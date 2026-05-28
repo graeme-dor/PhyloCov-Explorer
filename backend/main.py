@@ -210,3 +210,48 @@ def get_export_download_url(task_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating download URL: {str(e)}")
+
+@app.get("/map")
+def get_map_tiles(dataset: str, start_date: str, end_date: str):
+    """
+    Returns the tile URL format for a given dataset and date range to be displayed on a Leaflet map.
+    """
+    valid_datasets = ["chirps", "era5", "modis_ndvi", "srtm"]
+    if dataset not in valid_datasets:
+        raise HTTPException(status_code=400, detail=f"Unsupported dataset: {dataset}")
+
+    try:
+        if dataset == "chirps":
+            img_col = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY") \
+                .filterDate(start_date, end_date) \
+                .select("precipitation")
+            img = img_col.mean()
+            vis_params = {"min": 0, "max": 50, "palette": ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494']}
+            
+        elif dataset == "era5":
+            img_col = ee.ImageCollection("ECMWF/ERA5/DAILY") \
+                .filterDate(start_date, end_date) \
+                .select("mean_2m_air_temperature")
+            img = img_col.mean().subtract(273.15) # Kelvin to Celsius
+            vis_params = {"min": 0, "max": 40, "palette": ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026']}
+            
+        elif dataset == "modis_ndvi":
+            img_col = ee.ImageCollection("MODIS/061/MOD13Q1") \
+                .filterDate(start_date, end_date) \
+                .select("NDVI")
+            img = img_col.mean().multiply(0.0001)
+            vis_params = {"min": 0.0, "max": 1.0, "palette": ['#FFFFFF', '#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400', '#3E8601', '#207401', '#056201', '#004C00', '#023B01', '#012E01', '#011D01', '#011301']}
+            
+        elif dataset == "srtm":
+            img = ee.Image("USGS/SRTMGL1_003").select("elevation")
+            vis_params = {"min": 0, "max": 3000, "palette": ['#000000', '#478FCD', '#86C58E', '#AFC35E', '#8F7131', '#B78D4C', '#E2B8A6', '#FFFFFF']}
+
+        # Get the map ID dictionary which contains the tile fetcher URL
+        map_id_dict = ee.Image(img).getMapId(vis_params)
+        
+        return {
+            "urlFormat": map_id_dict["tile_fetcher"].url_format
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Earth Engine map generation error: {str(e)}")
