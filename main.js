@@ -222,6 +222,18 @@ document.addEventListener("DOMContentLoaded", () => {
       const mapDownloadContainer = document.getElementById("mapDownloadContainer");
       const mapDownloadLink = document.getElementById("mapDownloadLink");
       const mapStatusDot = document.getElementById("mapStatusDot");
+      const mapTimer = document.getElementById("mapTimer");
+
+      let mapTimerInterval = null;
+      let mapStartTime = null;
+
+      function updateMapTimer() {
+        if (!mapStartTime) return;
+        const elapsedSecs = Math.floor((Date.now() - mapStartTime) / 1000);
+        const mins = Math.floor(elapsedSecs / 60).toString().padStart(2, '0');
+        const secs = (elapsedSecs % 60).toString().padStart(2, '0');
+        mapTimer.textContent = `Time Elapsed: ${mins}:${secs}`;
+      }
 
       mapForm.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -233,6 +245,12 @@ document.addEventListener("DOMContentLoaded", () => {
         mapStatusText.textContent = "SUBMITTED";
         mapStatusMessage.textContent = "Submitting task to Earth Engine...";
         mapStatusDot.style.backgroundColor = "#d2a8ff";
+
+        mapTimer.style.display = "block";
+        mapStartTime = Date.now();
+        updateMapTimer();
+        if (mapTimerInterval) clearInterval(mapTimerInterval);
+        mapTimerInterval = setInterval(updateMapTimer, 1000);
 
         const formData = new FormData(mapForm);
         const payload = {
@@ -259,6 +277,7 @@ document.addEventListener("DOMContentLoaded", () => {
           mapStatusDot.style.backgroundColor = "#f85149";
           mapExportBtn.disabled = false;
           mapExportBtn.textContent = "Start Backend Export";
+          if (mapTimerInterval) clearInterval(mapTimerInterval);
         }
       });
 
@@ -277,12 +296,14 @@ document.addEventListener("DOMContentLoaded", () => {
           } else if (data.state === "COMPLETED") {
             mapStatusMessage.textContent = "Completed! Generating link...";
             mapStatusDot.style.backgroundColor = "#2ea043";
+            if (mapTimerInterval) clearInterval(mapTimerInterval);
             fetchMapDownloadLink(taskId);
           } else {
             mapStatusMessage.textContent = `Task ended: ${data.state}`;
             mapStatusDot.style.backgroundColor = "#f85149";
             mapExportBtn.disabled = false;
             mapExportBtn.textContent = "Start Backend Export";
+            if (mapTimerInterval) clearInterval(mapTimerInterval);
           }
         } catch (error) {
           mapStatusText.textContent = "ERROR";
@@ -290,6 +311,7 @@ document.addEventListener("DOMContentLoaded", () => {
           mapStatusDot.style.backgroundColor = "#f85149";
           mapExportBtn.disabled = false;
           mapExportBtn.textContent = "Start Backend Export";
+          if (mapTimerInterval) clearInterval(mapTimerInterval);
         }
       }
 
