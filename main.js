@@ -226,13 +226,44 @@ document.addEventListener("DOMContentLoaded", () => {
 
       let mapTimerInterval = null;
       let mapStartTime = null;
+      let mapEstimatedText = "";
+
+      function estimateExportTime(startDateStr, endDateStr, scale) {
+        const start = new Date(startDateStr);
+        const end = new Date(endDateStr);
+        const days = Math.max(1, (end - start) / (1000 * 60 * 60 * 24));
+        
+        // Base time for a 30-day average at 5000m (approx 1.5 mins compute)
+        let baseSeconds = 90;
+        
+        // Scale factor: Pixel count grows quadratically as scale decreases.
+        // Earth Engine parallelizes well, so time growth is sub-linear to pixel count.
+        const scaleMultiplier = Math.pow(5000 / scale, 1.2); 
+        
+        // Temporal factor: Time scales linearly with number of days to average
+        const timeMultiplier = Math.max(0.5, days / 30);
+        
+        let estimatedSeconds = baseSeconds * scaleMultiplier * timeMultiplier;
+        
+        // Add Earth Engine queue buffer (tasks usually sit in READY for ~30-60s)
+        estimatedSeconds += 45;
+        
+        // Convert to broad minute ranges
+        const minMins = Math.max(1, Math.floor((estimatedSeconds * 0.6) / 60));
+        const maxMins = Math.ceil((estimatedSeconds * 1.4) / 60);
+        
+        if (maxMins > 60) {
+          return "> 1 hour (depending on country size)";
+        }
+        return `~ ${minMins} - ${maxMins} mins`;
+      }
 
       function updateMapTimer() {
         if (!mapStartTime) return;
         const elapsedSecs = Math.floor((Date.now() - mapStartTime) / 1000);
         const mins = Math.floor(elapsedSecs / 60).toString().padStart(2, '0');
         const secs = (elapsedSecs % 60).toString().padStart(2, '0');
-        mapTimer.textContent = `Time Elapsed: ${mins}:${secs}`;
+        mapTimer.textContent = `Time Elapsed: ${mins}:${secs} | ETA: ${mapEstimatedText}`;
       }
 
       mapForm.addEventListener("submit", async (e) => {
@@ -245,6 +276,13 @@ document.addEventListener("DOMContentLoaded", () => {
         mapStatusText.textContent = "SUBMITTED";
         mapStatusMessage.textContent = "Submitting task to Earth Engine...";
         mapStatusDot.style.backgroundColor = "#d2a8ff";
+
+        const formData = new FormData(mapForm);
+        const startDate = formData.get("start_date");
+        const endDate = formData.get("end_date");
+        const scale = parseInt(formData.get("scale"), 10);
+
+        mapEstimatedText = estimateExportTime(startDate, endDate, scale);
 
         mapTimer.style.display = "block";
         mapStartTime = Date.now();
