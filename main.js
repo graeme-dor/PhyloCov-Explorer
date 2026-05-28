@@ -15,7 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Intersection Observer for fade-in elements
   const sections = document.querySelectorAll(".fade-in-section");
-  
+
   const observerOptions = {
     root: null,
     rootMargin: "0px",
@@ -45,11 +45,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // The base URL for your local FastAPI backend.
     // In production, this should be the URL of your Cloud Run service.
-    const BACKEND_URL = "http://127.0.0.1:8000";
+    const BACKEND_URL = "https://phylocov-export-backend-719941553080.europe-west1.run.app";
 
     exportForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      
+
       // Reset UI
       exportBtn.disabled = true;
       exportBtn.textContent = "Starting...";
@@ -76,7 +76,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         const data = await response.json();
-        
+
         if (!response.ok) {
           throw new Error(data.detail || "Failed to start export");
         }
@@ -141,7 +141,7 @@ document.addEventListener("DOMContentLoaded", () => {
         statusMessage.textContent = "Ready for download!";
         downloadLink.href = data.download_url;
         downloadContainer.style.display = "block";
-        
+
         exportBtn.disabled = false;
         exportBtn.textContent = "Start Export";
 
