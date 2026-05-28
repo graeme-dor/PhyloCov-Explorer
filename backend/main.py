@@ -224,7 +224,8 @@ def get_export_download_url(task_id: str):
             expiration=timedelta(hours=1),
             method="GET",
             service_account_email="phylocov-exporter@ee-graemedor.iam.gserviceaccount.com",
-            access_token=credentials.token
+            access_token=credentials.token,
+            response_disposition=f'attachment; filename="{blob.name.split("/")[-1]}"'
         )
         
         return {"download_url": url}
