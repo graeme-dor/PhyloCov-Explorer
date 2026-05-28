@@ -5,6 +5,7 @@ from pydantic import BaseModel
 import ee
 from google.cloud import storage
 from datetime import timedelta
+from typing import Optional
 app = FastAPI(title="PhyloCov Backend Export Service")
 
 # CORS support for future frontend integration
@@ -212,9 +213,10 @@ def get_export_download_url(task_id: str):
         raise HTTPException(status_code=500, detail=f"Error generating download URL: {str(e)}")
 
 @app.get("/map")
-def get_map_tiles(dataset: str, start_date: str, end_date: str):
+def get_map_tiles(dataset: str, start_date: str, end_date: str, country: Optional[str] = None):
     """
     Returns the tile URL format for a given dataset and date range to be displayed on a Leaflet map.
+    If country is provided, clips the visualization to that country and returns its bounding box.
     """
     valid_datasets = ["chirps", "era5", "modis_ndvi", "srtm"]
     if dataset not in valid_datasets:
@@ -246,12 +248,37 @@ def get_map_tiles(dataset: str, start_date: str, end_date: str):
             img = ee.Image("USGS/SRTMGL1_003").select("elevation")
             vis_params = {"min": 0, "max": 3000, "palette": ['#000000', '#478FCD', '#86C58E', '#AFC35E', '#8F7131', '#B78D4C', '#E2B8A6', '#FFFFFF']}
 
+        bounds = None
+        if country:
+            lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
+            roi = lsib.filter(ee.Filter.eq("country_na", country))
+            
+            if roi.size().getInfo() == 0:
+                raise HTTPException(
+                    status_code=404, 
+                    detail=f"Country '{country}' not found in USDOS/LSIB_SIMPLE/2017"
+                )
+                
+            roiMask = ee.Image.constant(1).clip(roi).selfMask()
+            img = img.updateMask(roiMask).clip(roi)
+            
+            # Extract bounding box to return to the frontend
+            geom_dict = roi.geometry().bounds().getInfo()
+            coords = geom_dict['coordinates'][0]
+            lons = [p[0] for p in coords]
+            lats = [p[1] for p in coords]
+            # Leaflet bounds format: [[south, west], [north, east]]
+            bounds = [[min(lats), min(lons)], [max(lats), max(lons)]]
+
         # Get the map ID dictionary which contains the tile fetcher URL
         map_id_dict = ee.Image(img).getMapId(vis_params)
         
         return {
-            "urlFormat": map_id_dict["tile_fetcher"].url_format
+            "urlFormat": map_id_dict["tile_fetcher"].url_format,
+            "bounds": bounds
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Earth Engine map generation error: {str(e)}")

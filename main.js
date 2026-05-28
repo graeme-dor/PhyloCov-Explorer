@@ -168,19 +168,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const datasetSelect = document.getElementById("map_dataset");
     const startDateInput = document.getElementById("map_start_date");
     const endDateInput = document.getElementById("map_end_date");
-
+    const countryInput = document.getElementById("map_country");
     // Update Map visualization
     if (updateMapBtn) {
       updateMapBtn.addEventListener("click", async () => {
         const dataset = datasetSelect.value;
         const startDate = startDateInput.value;
         const endDate = endDateInput.value;
+        const country = countryInput.value;
 
         updateMapBtn.disabled = true;
         updateMapBtn.textContent = "Loading tiles...";
 
         try {
-          const response = await fetch(`${BACKEND_URL}/map?dataset=${dataset}&start_date=${startDate}&end_date=${endDate}`);
+          const response = await fetch(`${BACKEND_URL}/map?dataset=${dataset}&start_date=${startDate}&end_date=${endDate}&country=${encodeURIComponent(country)}`);
           const data = await response.json();
 
           if (!response.ok) throw new Error(data.detail || "Failed to load map tiles");
@@ -195,6 +196,11 @@ document.addEventListener("DOMContentLoaded", () => {
             attribution: "Map Data &copy; Google Earth Engine",
             maxZoom: 20
           }).addTo(map);
+
+          // Auto-zoom to country bounds if returned
+          if (data.bounds) {
+            map.fitBounds(data.bounds, { padding: [20, 20], maxZoom: 8 });
+          }
 
         } catch (error) {
           console.error("Map Update Error:", error);
