@@ -182,21 +182,34 @@ def get_export_download_url(task_id: str):
         if not dest_uris:
             raise HTTPException(status_code=404, detail="No output files found for this task")
         
-        gcs_uri = dest_uris[0] # e.g. "gs://bucket-quickstart_ee-graemedor/exports/..."
-        if not gcs_uri.startswith("gs://"):
-            raise HTTPException(status_code=500, detail="Unknown destination URI format")
-            
-        # Parse the GCS URI
-        path_parts = gcs_uri.replace("gs://", "").split("/")
-        blob_bucket = path_parts[0]
-        blob_name = "/".join(path_parts[1:])
+        gcs_uri = dest_uris[0] # e.g. "gs://bucket/..." or "https://console.cloud.google.com/storage/browser/bucket/..."
         
-        if blob_bucket != GCS_BUCKET:
-            bucket = client.bucket(blob_bucket)
+        blob_bucket = None
+        blob_prefix = None
+        
+        if gcs_uri.startswith("gs://"):
+            path_parts = gcs_uri.replace("gs://", "").split("/", 1)
+            blob_bucket = path_parts[0]
+            blob_prefix = path_parts[1] if len(path_parts) > 1 else ""
+        elif "storage/browser/" in gcs_uri:
+            # Extract bucket and prefix from the console URL
+            base_split = gcs_uri.split("storage/browser/")[1]
+            path_parts = base_split.split("/", 1)
+            blob_bucket = path_parts[0]
+            blob_prefix = path_parts[1] if len(path_parts) > 1 else ""
+        else:
+            raise HTTPException(status_code=500, detail=f"Unknown destination URI format: {gcs_uri}")
             
-        blob = bucket.blob(blob_name)
-        if not blob.exists():
+        client = storage.Client(project=PROJECT_ID)
+        bucket = client.bucket(blob_bucket)
+        
+        # Earth Engine might return a prefix without .tif, so we list blobs that match the prefix
+        blobs = list(bucket.list_blobs(prefix=blob_prefix))
+        if not blobs:
             raise HTTPException(status_code=404, detail="Exported file not found in Google Cloud Storage")
+            
+        # In case it splits into multiple, we just link the first one for now
+        blob = blobs[0]
             
         # 3. Generate a signed URL
         url = blob.generate_signed_url(
