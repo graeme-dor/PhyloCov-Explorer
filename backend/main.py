@@ -111,10 +111,11 @@ def create_export(req: ExportRequest):
         
         task = ee.batch.Export.image.toCloudStorage(
             image=img,
-            description=f"Export_{req.dataset}_{safe_country}",
+            description=f"Export_{req.dataset}_{safe_country}_{job_id}",
             bucket=GCS_BUCKET,
             fileNamePrefix=file_prefix,
             scale=req.scale,
+            region=roi.geometry().bounds(),
             crs="EPSG:4326",
             fileFormat="GeoTIFF",
             maxPixels=1e13
@@ -205,8 +206,12 @@ def get_export_download_url(task_id: str):
         client = storage.Client(project=PROJECT_ID)
         bucket = client.bucket(blob_bucket)
         
+        job_id = task_info.get("description", "").split("_")[-1]
+        
         # Earth Engine might return a prefix without .tif, so we list blobs that match the prefix
-        blobs = list(bucket.list_blobs(prefix=blob_prefix))
+        all_blobs = list(bucket.list_blobs(prefix=blob_prefix))
+        blobs = [b for b in all_blobs if job_id in b.name]
+        
         if not blobs:
             raise HTTPException(status_code=404, detail="Exported file not found in Google Cloud Storage")
             
