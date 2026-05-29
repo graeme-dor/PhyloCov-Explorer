@@ -188,8 +188,17 @@ document.addEventListener("DOMContentLoaded", () => {
         if (meta && datasetInfoBox && mapScaleCustom) {
           datasetInfoBox.textContent = meta.text;
           mapScaleCustom.value = meta.res;
+          
+          if (mapScaleSelect) {
+            const nativeOption = mapScaleSelect.querySelector('option[value="native"]');
+            if (nativeOption) {
+              nativeOption.textContent = `${meta.res.toLocaleString()}m (Native)`;
+            }
+          }
         }
       });
+      // Trigger initial load
+      datasetSelect.dispatchEvent(new Event('change'));
     }
 
     if (mapScaleSelect && mapScaleCustom) {
