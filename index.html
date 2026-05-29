@@ -78,6 +78,7 @@
                   <option value="modis_ndvi">MODIS NDVI (MOD13Q1)</option>
                   <option value="srtm">SRTM Elevation (30m)</option>
                 </select>
+                <div id="datasetInfoBox" style="font-size: 0.8rem; color: #8b949e; margin-top: 0.35rem; font-family: monospace;">Native Resolution: ~5.5km | Temporal: Daily</div>
               </div>
 
               <div class="form-row">
@@ -90,8 +91,16 @@
                   <input type="date" id="map_end_date" name="end_date" value="2020-01-31" required>
                 </div>
               </div>
-              <div class="form-group">
-                <label for="map_country">Region of Interest (Country)</label>
+              <div class="form-group" style="margin-bottom: 0.5rem;">
+                <label>Region of Interest</label>
+                <div style="display: flex; gap: 1rem; margin-top: 0.25rem; margin-bottom: 0.5rem;">
+                  <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer;">
+                    <input type="radio" name="roi_type" value="country" checked> Country
+                  </label>
+                  <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer;">
+                    <input type="radio" name="roi_type" value="region"> Continent
+                  </label>
+                </div>
                 <select id="map_country" name="country" required>
 <option value="" disabled selected>Select a country...</option>
 <option value="Afghanistan">Afghanistan</option>
@@ -343,6 +352,16 @@
 <option value="Zambia">Zambia</option>
 <option value="Zimbabwe">Zimbabwe</option>
 </select>
+                <select id="map_region" name="region" style="display: none;">
+                  <option value="" disabled selected>Select a continent...</option>
+                  <option value="Africa">Africa</option>
+                  <option value="Antarctica">Antarctica</option>
+                  <option value="Asia">Asia</option>
+                  <option value="Europe">Europe</option>
+                  <option value="North America">North America</option>
+                  <option value="Oceania">Oceania</option>
+                  <option value="South America">South America</option>
+                </select>
               </div>
               
               <button type="button" class="btn-secondary" id="updateMapBtn">Update Map</button>

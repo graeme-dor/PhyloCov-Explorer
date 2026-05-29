@@ -32,7 +32,8 @@ except Exception as e:
 
 class ExportRequest(BaseModel):
     dataset: str
-    country: str
+    roi_type: str = "country"
+    roi_name: str
     start_date: str
     end_date: str
     scale: int
@@ -56,16 +57,19 @@ def create_export(req: ExportRequest):
             detail=f"Unsupported dataset. Must be one of: {', '.join(valid_datasets)}"
         )
 
-    # Fetch country feature and check if it exists
+    # Fetch ROI feature and check if it exists
     try:
         lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
-        roi = lsib.filter(ee.Filter.eq("country_na", req.country))
+        if req.roi_type == "region":
+            roi = lsib.filter(ee.Filter.eq("wld_rgn", req.roi_name))
+        else:
+            roi = lsib.filter(ee.Filter.eq("country_na", req.roi_name))
         
         # Warning: roi.size().getInfo() makes a blocking network call to EE
         if roi.size().getInfo() == 0:
             raise HTTPException(
                 status_code=404, 
-                detail=f"Country '{req.country}' not found in USDOS/LSIB_SIMPLE/2017"
+                detail=f"{req.roi_type.capitalize()} '{req.roi_name}' not found in USDOS/LSIB_SIMPLE/2017"
             )
     except HTTPException:
         raise
@@ -106,12 +110,12 @@ def create_export(req: ExportRequest):
         
         # Launch export task
         job_id = str(uuid.uuid4())
-        safe_country = req.country.replace(" ", "_").replace("/", "_")
-        file_prefix = f"exports/{req.dataset}/PhyloCov_{req.dataset}_{safe_country}_{req.start_date}_to_{req.end_date}_scale{req.scale}m_{job_id}"
+        safe_roi = req.roi_name.replace(" ", "_").replace("/", "_")
+        file_prefix = f"exports/{req.dataset}/PhyloCov_{req.dataset}_{safe_roi}_{req.start_date}_to_{req.end_date}_scale{req.scale}m_{job_id}"
         
         task = ee.batch.Export.image.toCloudStorage(
             image=img,
-            description=f"Export_{req.dataset}_{safe_country}_{job_id}",
+            description=f"Export_{req.dataset}_{safe_roi}_{job_id}",
             bucket=GCS_BUCKET,
             fileNamePrefix=file_prefix,
             scale=req.scale,
@@ -241,10 +245,10 @@ def get_export_download_url(task_id: str):
         raise HTTPException(status_code=500, detail=f"Error generating download URL: {str(e)}")
 
 @app.get("/map")
-def get_map_tiles(dataset: str, start_date: str, end_date: str, country: Optional[str] = None):
+def get_map_tiles(dataset: str, start_date: str, end_date: str, roi_type: str = "country", roi_name: Optional[str] = None):
     """
     Returns the tile URL format for a given dataset and date range to be displayed on a Leaflet map.
-    If country is provided, clips the visualization to that country and returns its bounding box.
+    If roi_name is provided, clips the visualization to that region/country and returns its bounding box.
     """
     valid_datasets = ["chirps", "era5", "modis_ndvi", "srtm"]
     if dataset not in valid_datasets:
@@ -277,14 +281,17 @@ def get_map_tiles(dataset: str, start_date: str, end_date: str, country: Optiona
             vis_params = {"min": 0, "max": 3000, "palette": ['#000000', '#478FCD', '#86C58E', '#AFC35E', '#8F7131', '#B78D4C', '#E2B8A6', '#FFFFFF']}
 
         bounds = None
-        if country:
+        if roi_name:
             lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
-            roi = lsib.filter(ee.Filter.eq("country_na", country))
+            if roi_type == "region":
+                roi = lsib.filter(ee.Filter.eq("wld_rgn", roi_name))
+            else:
+                roi = lsib.filter(ee.Filter.eq("country_na", roi_name))
             
             if roi.size().getInfo() == 0:
                 raise HTTPException(
                     status_code=404, 
-                    detail=f"Country '{country}' not found in USDOS/LSIB_SIMPLE/2017"
+                    detail=f"{roi_type.capitalize()} '{roi_name}' not found in USDOS/LSIB_SIMPLE/2017"
                 )
                 
             roiMask = ee.Image.constant(1).clip(roi).selfMask()

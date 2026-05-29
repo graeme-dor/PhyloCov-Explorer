@@ -169,19 +169,61 @@ document.addEventListener("DOMContentLoaded", () => {
     const startDateInput = document.getElementById("map_start_date");
     const endDateInput = document.getElementById("map_end_date");
     const countryInput = document.getElementById("map_country");
+    const regionInput = document.getElementById("map_region");
+    const datasetInfoBox = document.getElementById("datasetInfoBox");
+    const mapScaleInput = document.getElementById("map_scale");
+    
+    // Dataset Metadata
+    const datasetMetadata = {
+      chirps: { res: 5566, text: "Native Resolution: ~5.5km | Temporal: Daily" },
+      era5: { res: 27830, text: "Native Resolution: ~27.8km | Temporal: Daily" },
+      modis_ndvi: { res: 250, text: "Native Resolution: 250m | Temporal: 16-day" },
+      srtm: { res: 30, text: "Native Resolution: 30m | Temporal: Static" }
+    };
+
+    if (datasetSelect) {
+      datasetSelect.addEventListener("change", () => {
+        const meta = datasetMetadata[datasetSelect.value];
+        if (meta && datasetInfoBox && mapScaleInput) {
+          datasetInfoBox.textContent = meta.text;
+          mapScaleInput.value = meta.res;
+        }
+      });
+    }
+
+    // ROI Toggle Logic
+    const roiRadios = document.querySelectorAll('input[name="roi_type"]');
+    roiRadios.forEach(radio => {
+      radio.addEventListener("change", (e) => {
+        if (e.target.value === "country") {
+          countryInput.style.display = "block";
+          regionInput.style.display = "none";
+          countryInput.required = true;
+          regionInput.required = false;
+        } else {
+          countryInput.style.display = "none";
+          regionInput.style.display = "block";
+          countryInput.required = false;
+          regionInput.required = true;
+        }
+      });
+    });
+
     // Update Map visualization
     if (updateMapBtn) {
       updateMapBtn.addEventListener("click", async () => {
         const dataset = datasetSelect.value;
         const startDate = startDateInput.value;
         const endDate = endDateInput.value;
-        const country = countryInput.value;
+        
+        const roiType = document.querySelector('input[name="roi_type"]:checked').value;
+        const roiName = roiType === "country" ? countryInput.value : regionInput.value;
 
         updateMapBtn.disabled = true;
         updateMapBtn.textContent = "Loading tiles...";
 
         try {
-          const response = await fetch(`${BACKEND_URL}/map?dataset=${dataset}&start_date=${startDate}&end_date=${endDate}&country=${encodeURIComponent(country)}`);
+          const response = await fetch(`${BACKEND_URL}/map?dataset=${dataset}&start_date=${startDate}&end_date=${endDate}&roi_type=${roiType}&roi_name=${encodeURIComponent(roiName)}`);
           const data = await response.json();
 
           if (!response.ok) throw new Error(data.detail || "Failed to load map tiles");
@@ -290,10 +332,12 @@ document.addEventListener("DOMContentLoaded", () => {
         if (mapTimerInterval) clearInterval(mapTimerInterval);
         mapTimerInterval = setInterval(updateMapTimer, 1000);
 
-        const formData = new FormData(mapForm);
+        const roiType = document.querySelector('input[name="roi_type"]:checked').value;
+        const roiName = roiType === "country" ? formData.get("country") : formData.get("region");
         const payload = {
           dataset: formData.get("dataset"),
-          country: formData.get("country"),
+          roi_type: roiType,
+          roi_name: roiName,
           start_date: formData.get("start_date"),
           end_date: formData.get("end_date"),
           scale: parseInt(formData.get("scale"), 10)
