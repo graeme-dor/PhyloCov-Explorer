@@ -150,7 +150,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Initialize Leaflet Map
     const map = L.map("map", {
       zoomControl: false // Custom position later if needed
-    }).setView([-28.479, 24.672], 5); // Default center (South Africa)
+    }).setView([20, 0], 2); // Default center (Global)
 
     // Add Dark Base Map (CartoDB Dark Matter)
     L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
@@ -164,14 +164,15 @@ document.addEventListener("DOMContentLoaded", () => {
     let currentEELayer = null;
     const BACKEND_URL = "https://phylocov-export-backend-719941553080.europe-west1.run.app"; // Update for local dev if needed: http://127.0.0.1:8000
     
-    const updateMapBtn = document.getElementById("updateMapBtn");
     const datasetSelect = document.getElementById("map_dataset");
     const startDateInput = document.getElementById("map_start_date");
     const endDateInput = document.getElementById("map_end_date");
     const countryInput = document.getElementById("map_country");
     const regionInput = document.getElementById("map_region");
     const datasetInfoBox = document.getElementById("datasetInfoBox");
-    const mapScaleInput = document.getElementById("map_scale");
+    const mapScaleSelect = document.getElementById("map_scale_select");
+    const mapScaleCustom = document.getElementById("map_scale_custom");
+    const mapLoadingOverlay = document.getElementById("mapLoadingOverlay");
     
     // Dataset Metadata
     const datasetMetadata = {
@@ -184,9 +185,27 @@ document.addEventListener("DOMContentLoaded", () => {
     if (datasetSelect) {
       datasetSelect.addEventListener("change", () => {
         const meta = datasetMetadata[datasetSelect.value];
-        if (meta && datasetInfoBox && mapScaleInput) {
+        if (meta && datasetInfoBox && mapScaleCustom) {
           datasetInfoBox.textContent = meta.text;
-          mapScaleInput.value = meta.res;
+          mapScaleCustom.value = meta.res;
+        }
+      });
+    }
+
+    if (mapScaleSelect && mapScaleCustom) {
+      mapScaleSelect.addEventListener("change", (e) => {
+        if (e.target.value === "custom") {
+          mapScaleCustom.style.display = "block";
+          mapScaleCustom.required = true;
+        } else {
+          mapScaleCustom.style.display = "none";
+          mapScaleCustom.required = false;
+          if (e.target.value === "native") {
+            const meta = datasetMetadata[datasetSelect.value];
+            if (meta) mapScaleCustom.value = meta.res;
+          } else {
+            mapScaleCustom.value = parseInt(e.target.value, 10);
+          }
         }
       });
     }
@@ -209,50 +228,56 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
-    // Update Map visualization
-    if (updateMapBtn) {
-      updateMapBtn.addEventListener("click", async () => {
-        const dataset = datasetSelect.value;
-        const startDate = startDateInput.value;
-        const endDate = endDateInput.value;
-        
-        const roiType = document.querySelector('input[name="roi_type"]:checked').value;
-        const roiName = roiType === "country" ? countryInput.value : regionInput.value;
+    // Reactive Map Update Logic
+    async function triggerMapUpdate() {
+      const dataset = datasetSelect.value;
+      const startDate = startDateInput.value;
+      const endDate = endDateInput.value;
+      
+      const roiType = document.querySelector('input[name="roi_type"]:checked').value;
+      const roiName = roiType === "country" ? countryInput.value : regionInput.value;
 
-        updateMapBtn.disabled = true;
-        updateMapBtn.textContent = "Loading tiles...";
+      if (!dataset || !startDate || !endDate || !roiName) {
+        return; // Wait until all required fields are filled
+      }
 
-        try {
-          const response = await fetch(`${BACKEND_URL}/map?dataset=${dataset}&start_date=${startDate}&end_date=${endDate}&roi_type=${roiType}&roi_name=${encodeURIComponent(roiName)}`);
-          const data = await response.json();
+      if (mapLoadingOverlay) mapLoadingOverlay.style.display = "flex";
 
-          if (!response.ok) throw new Error(data.detail || "Failed to load map tiles");
+      try {
+        const response = await fetch(`${BACKEND_URL}/map?dataset=${dataset}&start_date=${startDate}&end_date=${endDate}&roi_type=${roiType}&roi_name=${encodeURIComponent(roiName)}`);
+        const data = await response.json();
 
-          // Remove old EE layer if exists
-          if (currentEELayer) {
-            map.removeLayer(currentEELayer);
-          }
+        if (!response.ok) throw new Error(data.detail || "Failed to load map tiles");
 
-          // Add new EE layer
-          currentEELayer = L.tileLayer(data.urlFormat, {
-            attribution: "Map Data &copy; Google Earth Engine",
-            maxZoom: 20
-          }).addTo(map);
-
-          // Auto-zoom to country bounds if returned
-          if (data.bounds) {
-            map.fitBounds(data.bounds, { padding: [20, 20], maxZoom: 8 });
-          }
-
-        } catch (error) {
-          console.error("Map Update Error:", error);
-          alert("Error loading map layer: " + error.message);
-        } finally {
-          updateMapBtn.disabled = false;
-          updateMapBtn.textContent = "Update Map";
+        // Remove old EE layer if exists
+        if (currentEELayer) {
+          map.removeLayer(currentEELayer);
         }
-      });
+
+        // Add new EE layer
+        currentEELayer = L.tileLayer(data.urlFormat, {
+          attribution: "Map Data &copy; Google Earth Engine",
+          maxZoom: 20
+        }).addTo(map);
+
+        // Auto-zoom to bounds if returned
+        if (data.bounds) {
+          map.fitBounds(data.bounds, { padding: [20, 20], maxZoom: 8 });
+        }
+      } catch (error) {
+        console.error("Map Update Error:", error);
+      } finally {
+        if (mapLoadingOverlay) mapLoadingOverlay.style.display = "none";
+      }
     }
+
+    [datasetSelect, startDateInput, endDateInput, countryInput, regionInput].forEach(el => {
+      if (el) el.addEventListener("change", triggerMapUpdate);
+    });
+    
+    roiRadios.forEach(radio => {
+      radio.addEventListener("change", triggerMapUpdate);
+    });
 
     // Handle Map Interface Export
     const mapForm = document.getElementById("nativeMapForm");
@@ -314,6 +339,7 @@ document.addEventListener("DOMContentLoaded", () => {
         mapExportBtn.disabled = true;
         mapExportBtn.textContent = "Starting...";
         mapExportStatus.style.display = "block";
+        mapExportStatus.scrollIntoView({ behavior: 'smooth', block: 'end' });
         mapDownloadContainer.style.display = "none";
         mapStatusText.textContent = "SUBMITTED";
         mapStatusMessage.textContent = "Submitting task to Earth Engine...";

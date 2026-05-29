@@ -63,8 +63,11 @@
           <p>Explore and extract ecological covariates in GeoJSON format. This path is designed for continuous-style phylodynamic analysis, generating environmental data perfectly formatted for post-hoc and landscape analyses using tools like Seraphim.</p>
         </div>
         </div>
-        <div class="map-wrapper">
+        <div class="map-wrapper" style="position: relative;">
           <div id="map" class="leaflet-map"></div>
+          <div id="mapLoadingOverlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1000; align-items: center; justify-content: center; color: white; font-weight: bold; pointer-events: none; backdrop-filter: blur(2px);">
+            Loading Map Layer...
+          </div>
           
           <!-- Native UI Overlay -->
           <div class="map-overlay-panel">
@@ -363,14 +366,18 @@
                   <option value="South America">South America</option>
                 </select>
               </div>
-              
-              <button type="button" class="btn-secondary" id="updateMapBtn">Update Map</button>
+              </div>
 
-              <hr class="panel-divider">
-
-              <div class="form-group">
-                <label for="map_scale">Export Resolution (m)</label>
-                <input type="number" id="map_scale" name="scale" value="5000" min="30" required>
+              <div class="form-group" style="margin-top: 1.5rem;">
+                <label for="map_scale_select">Export Resolution (m)</label>
+                <select id="map_scale_select" required>
+                  <option value="native">Native Dataset Resolution</option>
+                  <option value="1000">1km (High Res)</option>
+                  <option value="5000">5km (Medium Res)</option>
+                  <option value="10000">10km (Coarse Res)</option>
+                  <option value="custom">Custom...</option>
+                </select>
+                <input type="number" id="map_scale_custom" name="scale" value="5566" min="30" style="display: none; margin-top: 0.5rem;" placeholder="Enter custom resolution (m)">
               </div>
 
               <button type="submit" class="export-btn" id="mapExportBtn">Start Backend Export</button>
