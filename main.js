@@ -219,20 +219,54 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
+    const roiTagsContainer = document.getElementById("roi_tags_container");
+    let selectedROIs = new Set();
+
+    function renderROITags() {
+      if (!roiTagsContainer) return;
+      roiTagsContainer.innerHTML = "";
+      selectedROIs.forEach(roi => {
+        const tag = document.createElement("div");
+        tag.style.cssText = "background: rgba(88, 166, 255, 0.15); border: 1px solid rgba(88, 166, 255, 0.4); color: #58a6ff; padding: 4px 8px; border-radius: 12px; font-size: 0.8rem; display: flex; align-items: center; gap: 6px;";
+        tag.innerHTML = `<span>${roi}</span><button type="button" style="background: none; border: none; color: #58a6ff; cursor: pointer; padding: 0; font-size: 1rem; line-height: 1;">&times;</button>`;
+        tag.querySelector("button").addEventListener("click", () => {
+          selectedROIs.delete(roi);
+          renderROITags();
+          triggerMapUpdate();
+        });
+        roiTagsContainer.appendChild(tag);
+      });
+    }
+
+    function handleROISelection(e) {
+      if (e.target.value) {
+        selectedROIs.add(e.target.value);
+        e.target.value = ""; // Reset dropdown
+        renderROITags();
+        triggerMapUpdate();
+      }
+    }
+
     // ROI Toggle Logic
     const roiRadios = document.querySelectorAll('input[name="roi_type"]');
     roiRadios.forEach(radio => {
       radio.addEventListener("change", (e) => {
+        selectedROIs.clear();
+        renderROITags();
+        countryInput.value = "";
+        regionInput.value = "";
+        triggerMapUpdate();
+        
         if (e.target.value === "country") {
           countryInput.style.display = "block";
           regionInput.style.display = "none";
-          countryInput.required = true;
+          countryInput.required = selectedROIs.size === 0;
           regionInput.required = false;
         } else {
           countryInput.style.display = "none";
           regionInput.style.display = "block";
           countryInput.required = false;
-          regionInput.required = true;
+          regionInput.required = selectedROIs.size === 0;
         }
       });
     });
@@ -244,16 +278,28 @@ document.addEventListener("DOMContentLoaded", () => {
       const endDate = endDateInput.value;
       
       const roiType = document.querySelector('input[name="roi_type"]:checked').value;
-      const roiName = roiType === "country" ? countryInput.value : regionInput.value;
+      
+      // Update form required state based on selections
+      if (roiType === "country") {
+        countryInput.required = selectedROIs.size === 0;
+      } else {
+        regionInput.required = selectedROIs.size === 0;
+      }
 
-      if (!dataset || !startDate || !endDate || !roiName) {
+      if (!dataset || !startDate || !endDate || selectedROIs.size === 0) {
+        if (currentEELayer) {
+          map.removeLayer(currentEELayer);
+          currentEELayer = null;
+        }
         return; // Wait until all required fields are filled
       }
+
+      const roiNames = Array.from(selectedROIs).join(",");
 
       if (mapLoadingOverlay) mapLoadingOverlay.style.display = "flex";
 
       try {
-        const response = await fetch(`${BACKEND_URL}/map?dataset=${dataset}&start_date=${startDate}&end_date=${endDate}&roi_type=${roiType}&roi_name=${encodeURIComponent(roiName)}`);
+        const response = await fetch(`${BACKEND_URL}/map?dataset=${dataset}&start_date=${startDate}&end_date=${endDate}&roi_type=${roiType}&roi_names=${encodeURIComponent(roiNames)}`);
         const data = await response.json();
 
         if (!response.ok) throw new Error(data.detail || "Failed to load map tiles");
@@ -280,13 +326,15 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    [datasetSelect, startDateInput, endDateInput, countryInput, regionInput].forEach(el => {
+    [datasetSelect, startDateInput, endDateInput].forEach(el => {
       if (el) el.addEventListener("change", triggerMapUpdate);
     });
+
+    if (countryInput) countryInput.addEventListener("change", handleROISelection);
+    if (regionInput) regionInput.addEventListener("change", handleROISelection);
     
-    roiRadios.forEach(radio => {
-      radio.addEventListener("change", triggerMapUpdate);
-    });
+    // Initial required state setup
+    countryInput.required = true;
 
     // Handle Map Interface Export
     const mapForm = document.getElementById("nativeMapForm");
@@ -368,11 +416,10 @@ document.addEventListener("DOMContentLoaded", () => {
         mapTimerInterval = setInterval(updateMapTimer, 1000);
 
         const roiType = document.querySelector('input[name="roi_type"]:checked').value;
-        const roiName = roiType === "country" ? formData.get("country") : formData.get("region");
         const payload = {
           dataset: formData.get("dataset"),
           roi_type: roiType,
-          roi_name: roiName,
+          roi_names: Array.from(selectedROIs),
           start_date: formData.get("start_date"),
           end_date: formData.get("end_date"),
           scale: parseInt(formData.get("scale"), 10)

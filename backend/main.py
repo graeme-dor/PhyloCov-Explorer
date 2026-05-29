@@ -5,7 +5,7 @@ from pydantic import BaseModel
 import ee
 from google.cloud import storage
 from datetime import timedelta
-from typing import Optional
+from typing import Optional, List
 import google.auth
 from google.auth.transport import requests
 app = FastAPI(title="PhyloCov Backend Export Service")
@@ -33,7 +33,7 @@ except Exception as e:
 class ExportRequest(BaseModel):
     dataset: str
     roi_type: str = "country"
-    roi_name: str
+    roi_names: List[str]
     start_date: str
     end_date: str
     scale: int
@@ -61,15 +61,15 @@ def create_export(req: ExportRequest):
     try:
         lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
         if req.roi_type == "region":
-            roi = lsib.filter(ee.Filter.eq("wld_rgn", req.roi_name))
+            roi = lsib.filter(ee.Filter.inList("wld_rgn", req.roi_names))
         else:
-            roi = lsib.filter(ee.Filter.eq("country_na", req.roi_name))
+            roi = lsib.filter(ee.Filter.inList("country_na", req.roi_names))
         
         # Warning: roi.size().getInfo() makes a blocking network call to EE
         if roi.size().getInfo() == 0:
             raise HTTPException(
                 status_code=404, 
-                detail=f"{req.roi_type.capitalize()} '{req.roi_name}' not found in USDOS/LSIB_SIMPLE/2017"
+                detail=f"{req.roi_type.capitalize()}s '{req.roi_names}' not found in USDOS/LSIB_SIMPLE/2017"
             )
     except HTTPException:
         raise
@@ -110,7 +110,12 @@ def create_export(req: ExportRequest):
         
         # Launch export task
         job_id = str(uuid.uuid4())
-        safe_roi = req.roi_name.replace(" ", "_").replace("/", "_")
+        
+        if len(req.roi_names) > 3:
+            safe_roi = f"Multiple_{req.roi_type.capitalize()}s"
+        else:
+            safe_roi = "_and_".join([name.replace(" ", "_").replace("/", "_") for name in req.roi_names])
+            
         file_prefix = f"exports/{req.dataset}/PhyloCov_{req.dataset}_{safe_roi}_{req.start_date}_to_{req.end_date}_scale{req.scale}m_{job_id}"
         
         task = ee.batch.Export.image.toCloudStorage(
@@ -245,10 +250,10 @@ def get_export_download_url(task_id: str):
         raise HTTPException(status_code=500, detail=f"Error generating download URL: {str(e)}")
 
 @app.get("/map")
-def get_map_tiles(dataset: str, start_date: str, end_date: str, roi_type: str = "country", roi_name: Optional[str] = None):
+def get_map_tiles(dataset: str, start_date: str, end_date: str, roi_type: str = "country", roi_names: Optional[str] = None):
     """
     Returns the tile URL format for a given dataset and date range to be displayed on a Leaflet map.
-    If roi_name is provided, clips the visualization to that region/country and returns its bounding box.
+    If roi_names is provided (comma-separated), clips the visualization to those regions/countries and returns their bounding box.
     """
     valid_datasets = ["chirps", "era5", "modis_ndvi", "srtm"]
     if dataset not in valid_datasets:
@@ -281,17 +286,18 @@ def get_map_tiles(dataset: str, start_date: str, end_date: str, roi_type: str = 
             vis_params = {"min": 0, "max": 3000, "palette": ['#000000', '#478FCD', '#86C58E', '#AFC35E', '#8F7131', '#B78D4C', '#E2B8A6', '#FFFFFF']}
 
         bounds = None
-        if roi_name:
+        if roi_names:
+            names_list = roi_names.split(",")
             lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
             if roi_type == "region":
-                roi = lsib.filter(ee.Filter.eq("wld_rgn", roi_name))
+                roi = lsib.filter(ee.Filter.inList("wld_rgn", names_list))
             else:
-                roi = lsib.filter(ee.Filter.eq("country_na", roi_name))
+                roi = lsib.filter(ee.Filter.inList("country_na", names_list))
             
             if roi.size().getInfo() == 0:
                 raise HTTPException(
                     status_code=404, 
-                    detail=f"{roi_type.capitalize()} '{roi_name}' not found in USDOS/LSIB_SIMPLE/2017"
+                    detail=f"{roi_type.capitalize()}s '{roi_names}' not found in USDOS/LSIB_SIMPLE/2017"
                 )
                 
             roiMask = ee.Image.constant(1).clip(roi).selfMask()
