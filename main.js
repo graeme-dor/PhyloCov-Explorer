@@ -51,7 +51,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const formData = new FormData(exportForm);
       const payload = {
         dataset: formData.get("dataset"),
-        country: formData.get("country"),
+        roi_type: "country",
+        roi_names: [formData.get("country")],
         start_date: formData.get("start_date"),
         end_date: formData.get("end_date"),
         scale: parseInt(formData.get("scale"), 10)
