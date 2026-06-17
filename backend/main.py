@@ -71,7 +71,7 @@ def create_export(req: ExportRequest):
     POST /exports with a JSON body matching the ExportRequest schema.
     """
     # Validate the dataset
-    valid_datasets = ["chirps", "era5", "era5_land_monthly", "modis_ndvi", "srtm"]
+    valid_datasets = ["chirps", "era5", "era5_land_monthly", "modis_lst_day", "modis_lst_night", "modis_lst_range", "modis_ndvi", "srtm"]
     if req.dataset not in valid_datasets:
         raise HTTPException(
             status_code=400, 
@@ -123,6 +123,18 @@ def create_export(req: ExportRequest):
                 .filterDate(adjusted_start, adjusted_end) \
                 .select("temperature_2m")
             img = img_col.mean().subtract(273.15) # Kelvin to Celsius
+        
+        elif req.dataset in ["modis_lst_day", "modis_lst_night", "modis_lst_range"]:
+            adjusted_start, adjusted_end = adjust_monthly_dates(req.start_date, req.end_date)
+            img_col = ee.ImageCollection("MODIS/061/MOD21C3").filterDate(adjusted_start, adjusted_end)
+            if req.dataset == "modis_lst_day":
+                img = img_col.select("LST_Day").mean().subtract(273.15)
+            elif req.dataset == "modis_lst_night":
+                img = img_col.select("LST_Night").mean().subtract(273.15)
+            else: # range
+                day = img_col.select("LST_Day").mean().subtract(273.15)
+                night = img_col.select("LST_Night").mean().subtract(273.15)
+                img = day.subtract(night)
         
         elif req.dataset == "modis_ndvi":
             img_col = ee.ImageCollection("MODIS/061/MOD13Q1") \
@@ -283,7 +295,7 @@ def get_map_tiles(dataset: str, start_date: str, end_date: str, roi_type: str = 
     Returns the tile URL format for a given dataset and date range to be displayed on a Leaflet map.
     If roi_names is provided (comma-separated), clips the visualization to those regions/countries and returns their bounding box.
     """
-    valid_datasets = ["chirps", "era5", "era5_land_monthly", "modis_ndvi", "srtm"]
+    valid_datasets = ["chirps", "era5", "era5_land_monthly", "modis_lst_day", "modis_lst_night", "modis_lst_range", "modis_ndvi", "srtm"]
     if dataset not in valid_datasets:
         raise HTTPException(status_code=400, detail=f"Unsupported dataset: {dataset}")
 
@@ -309,6 +321,21 @@ def get_map_tiles(dataset: str, start_date: str, end_date: str, roi_type: str = 
                 .select("temperature_2m")
             img = img_col.mean().subtract(273.15) # Kelvin to Celsius
             vis_params = {"min": 0, "max": 40, "palette": ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026']}
+            
+        elif dataset in ["modis_lst_day", "modis_lst_night", "modis_lst_range"]:
+            adjusted_start, adjusted_end = adjust_monthly_dates(start_date, end_date)
+            img_col = ee.ImageCollection("MODIS/061/MOD21C3").filterDate(adjusted_start, adjusted_end)
+            if dataset == "modis_lst_day":
+                img = img_col.select("LST_Day").mean().subtract(273.15)
+                vis_params = {"min": 0, "max": 40, "palette": ['#313695', '#4575b4', '#74add1', '#ffffbf', '#fee090', '#f46d43', '#a50026']}
+            elif dataset == "modis_lst_night":
+                img = img_col.select("LST_Night").mean().subtract(273.15)
+                vis_params = {"min": -10, "max": 25, "palette": ['#053061', '#2166ac', '#4393c3', '#f7f7f7', '#fddbc7', '#d6604f', '#b2182b']}
+            else: # range
+                day = img_col.select("LST_Day").mean().subtract(273.15)
+                night = img_col.select("LST_Night").mean().subtract(273.15)
+                img = day.subtract(night)
+                vis_params = {"min": 5, "max": 25, "palette": ['#ffffd9', '#edf8b1', '#7fcdbb', '#41b6c4', '#1d91c0', '#225ea8', '#081d58']}
             
         elif dataset == "modis_ndvi":
             img_col = ee.ImageCollection("MODIS/061/MOD13Q1") \

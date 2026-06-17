@@ -33,6 +33,27 @@ document.addEventListener("DOMContentLoaded", () => {
       end: today,
       rangeText: "Available: 2000-02-18 to Present"
     },
+    modis_lst_day: { 
+      res: 5600, 
+      text: "Native Resolution: ~5.6km | Temporal: Monthly",
+      start: "2000-03-05",
+      end: today,
+      rangeText: "Available: 2000-03-05 to Present"
+    },
+    modis_lst_night: { 
+      res: 5600, 
+      text: "Native Resolution: ~5.6km | Temporal: Monthly",
+      start: "2000-03-05",
+      end: today,
+      rangeText: "Available: 2000-03-05 to Present"
+    },
+    modis_lst_range: { 
+      res: 5600, 
+      text: "Native Resolution: ~5.6km | Temporal: Monthly",
+      start: "2000-03-05",
+      end: today,
+      rangeText: "Available: 2000-03-05 to Present"
+    },
     srtm: { 
       res: 30, 
       text: "Native Resolution: 30m | Temporal: Static",
