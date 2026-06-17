@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import ee
 from google.cloud import storage
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional, List
 import google.auth
 from google.auth.transport import requests
@@ -30,6 +30,27 @@ except Exception as e:
     print(f"Failed to initialize Earth Engine: {e}")
     # Note: Requires Google Application Default Credentials to be set up in the environment.
 
+def adjust_monthly_dates(start_date_str: str, end_date_str: str):
+    try:
+        start = datetime.strptime(start_date_str, "%Y-%m-%d")
+        end = datetime.strptime(end_date_str, "%Y-%m-%d")
+        
+        # First day of the start month
+        adjusted_start = start.replace(day=1)
+        
+        # First day of the month after the end month (since end is exclusive)
+        if end.month == 12:
+            adjusted_end = end.replace(year=end.year + 1, month=1, day=1)
+        else:
+            adjusted_end = end.replace(month=end.month + 1, day=1)
+            
+        return adjusted_start.strftime("%Y-%m-%d"), adjusted_end.strftime("%Y-%m-%d")
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid date format. Must be YYYY-MM-DD. Error: {str(e)}"
+        )
+
 class ExportRequest(BaseModel):
     dataset: str
     roi_type: str = "country"
@@ -50,7 +71,7 @@ def create_export(req: ExportRequest):
     POST /exports with a JSON body matching the ExportRequest schema.
     """
     # Validate the dataset
-    valid_datasets = ["chirps", "era5", "modis_ndvi", "srtm"]
+    valid_datasets = ["chirps", "era5", "era5_land_monthly", "modis_ndvi", "srtm"]
     if req.dataset not in valid_datasets:
         raise HTTPException(
             status_code=400, 
@@ -94,6 +115,13 @@ def create_export(req: ExportRequest):
             img_col = ee.ImageCollection("ECMWF/ERA5/DAILY") \
                 .filterDate(req.start_date, req.end_date) \
                 .select("mean_2m_air_temperature")
+            img = img_col.mean().subtract(273.15) # Kelvin to Celsius
+        
+        elif req.dataset == "era5_land_monthly":
+            adjusted_start, adjusted_end = adjust_monthly_dates(req.start_date, req.end_date)
+            img_col = ee.ImageCollection("ECMWF/ERA5_LAND/MONTHLY_AGGR") \
+                .filterDate(adjusted_start, adjusted_end) \
+                .select("temperature_2m")
             img = img_col.mean().subtract(273.15) # Kelvin to Celsius
         
         elif req.dataset == "modis_ndvi":
@@ -255,7 +283,7 @@ def get_map_tiles(dataset: str, start_date: str, end_date: str, roi_type: str = 
     Returns the tile URL format for a given dataset and date range to be displayed on a Leaflet map.
     If roi_names is provided (comma-separated), clips the visualization to those regions/countries and returns their bounding box.
     """
-    valid_datasets = ["chirps", "era5", "modis_ndvi", "srtm"]
+    valid_datasets = ["chirps", "era5", "era5_land_monthly", "modis_ndvi", "srtm"]
     if dataset not in valid_datasets:
         raise HTTPException(status_code=400, detail=f"Unsupported dataset: {dataset}")
 
@@ -271,6 +299,14 @@ def get_map_tiles(dataset: str, start_date: str, end_date: str, roi_type: str = 
             img_col = ee.ImageCollection("ECMWF/ERA5/DAILY") \
                 .filterDate(start_date, end_date) \
                 .select("mean_2m_air_temperature")
+            img = img_col.mean().subtract(273.15) # Kelvin to Celsius
+            vis_params = {"min": 0, "max": 40, "palette": ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026']}
+            
+        elif dataset == "era5_land_monthly":
+            adjusted_start, adjusted_end = adjust_monthly_dates(start_date, end_date)
+            img_col = ee.ImageCollection("ECMWF/ERA5_LAND/MONTHLY_AGGR") \
+                .filterDate(adjusted_start, adjusted_end) \
+                .select("temperature_2m")
             img = img_col.mean().subtract(273.15) # Kelvin to Celsius
             vis_params = {"min": 0, "max": 40, "palette": ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026']}
             

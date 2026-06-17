@@ -179,6 +179,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const datasetMetadata = {
       chirps: { res: 5566, text: "Native Resolution: ~5.5km | Temporal: Daily" },
       era5: { res: 27830, text: "Native Resolution: ~27.8km | Temporal: Daily" },
+      era5_land_monthly: { res: 11132, text: "Native Resolution: ~11.1km | Temporal: Monthly" },
       modis_ndvi: { res: 250, text: "Native Resolution: 250m | Temporal: 16-day" },
       srtm: { res: 30, text: "Native Resolution: 30m | Temporal: Static" }
     };
