@@ -1,6 +1,71 @@
 import './style.css';
 
 document.addEventListener("DOMContentLoaded", () => {
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Shared Dataset Metadata
+  const datasetMetadata = {
+    chirps: { 
+      res: 5566, 
+      text: "Native Resolution: ~5.5km | Temporal: Daily",
+      start: "1981-01-01",
+      end: today,
+      rangeText: "Available: 1981-01-01 to Present"
+    },
+    era5: { 
+      res: 27830, 
+      text: "Native Resolution: ~27.8km | Temporal: Daily",
+      start: "1979-01-01",
+      end: today,
+      rangeText: "Available: 1979-01-01 to Present (~3 months lag)"
+    },
+    era5_land_monthly: { 
+      res: 11132, 
+      text: "Native Resolution: ~11.1km | Temporal: Monthly",
+      start: "1950-01-01",
+      end: today,
+      rangeText: "Available: 1950-01-01 to Present (~2-3 months lag)"
+    },
+    modis_ndvi: { 
+      res: 250, 
+      text: "Native Resolution: 250m | Temporal: 16-day",
+      start: "2000-02-18",
+      end: today,
+      rangeText: "Available: 2000-02-18 to Present"
+    },
+    srtm: { 
+      res: 30, 
+      text: "Native Resolution: 30m | Temporal: Static",
+      start: null,
+      end: null,
+      rangeText: "Available: Static topography dataset (Feb 2000)"
+    }
+  };
+
+  function updateDatasetUI(datasetVal, infoBox, startDateInput, endDateInput, dateRow) {
+    const meta = datasetMetadata[datasetVal];
+    if (!meta) return;
+
+    if (infoBox) {
+      infoBox.textContent = `${meta.text} | ${meta.rangeText}`;
+    }
+
+    if (meta.start && meta.end) {
+      if (dateRow) dateRow.style.display = "flex";
+      if (startDateInput) {
+        startDateInput.min = meta.start;
+        startDateInput.max = meta.end;
+      }
+      if (endDateInput) {
+        endDateInput.min = meta.start;
+        endDateInput.max = meta.end;
+      }
+    } else {
+      // Static dataset, hide dates
+      if (dateRow) dateRow.style.display = "none";
+    }
+  }
+
   // (Old iframe logic removed for Native Map Architecture)
   // Intersection Observer for fade-in elements
   const sections = document.querySelectorAll(".fade-in-section");
@@ -25,6 +90,19 @@ document.addEventListener("DOMContentLoaded", () => {
   const exportForm = document.getElementById("exportForm");
   if (exportForm) {
     const exportBtn = document.getElementById("exportBtn");
+    const exportDatasetSelect = document.getElementById("dataset");
+    const exportStartDateInput = document.getElementById("start_date");
+    const exportEndDateInput = document.getElementById("end_date");
+    const exportDateRow = document.getElementById("export_date_row");
+    const exportDatasetInfoBox = document.getElementById("exportDatasetInfoBox");
+
+    if (exportDatasetSelect) {
+      exportDatasetSelect.addEventListener("change", () => {
+        updateDatasetUI(exportDatasetSelect.value, exportDatasetInfoBox, exportStartDateInput, exportEndDateInput, exportDateRow);
+      });
+      // Trigger initial load
+      exportDatasetSelect.dispatchEvent(new Event('change'));
+    }
     const exportStatus = document.getElementById("exportStatus");
     const statusText = document.getElementById("statusText");
     const statusMessage = document.getElementById("statusMessage");
@@ -174,21 +252,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const mapScaleSelect = document.getElementById("map_scale_select");
     const mapScaleCustom = document.getElementById("map_scale_custom");
     const mapLoadingOverlay = document.getElementById("mapLoadingOverlay");
-    
-    // Dataset Metadata
-    const datasetMetadata = {
-      chirps: { res: 5566, text: "Native Resolution: ~5.5km | Temporal: Daily" },
-      era5: { res: 27830, text: "Native Resolution: ~27.8km | Temporal: Daily" },
-      era5_land_monthly: { res: 11132, text: "Native Resolution: ~11.1km | Temporal: Monthly" },
-      modis_ndvi: { res: 250, text: "Native Resolution: 250m | Temporal: 16-day" },
-      srtm: { res: 30, text: "Native Resolution: 30m | Temporal: Static" }
-    };
+    const mapDateRow = document.getElementById("map_date_row");
 
     if (datasetSelect) {
       datasetSelect.addEventListener("change", () => {
+        updateDatasetUI(datasetSelect.value, datasetInfoBox, startDateInput, endDateInput, mapDateRow);
+        
+        // Map scale update logic
         const meta = datasetMetadata[datasetSelect.value];
-        if (meta && datasetInfoBox && mapScaleCustom) {
-          datasetInfoBox.textContent = meta.text;
+        if (meta && mapScaleCustom) {
           mapScaleCustom.value = meta.res;
           
           if (mapScaleSelect) {
