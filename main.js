@@ -141,23 +141,14 @@ document.addEventListener("DOMContentLoaded", () => {
     let loadedExportAssetType = "ImageCollection";
     let exportBandsMetadata = [];
 
+    const exportScaleSelect = document.getElementById("export_scale_select");
+    const exportScaleCustom = document.getElementById("scale");
+
     if (exportCustomScalePreset) {
       exportCustomScalePreset.addEventListener("change", () => {
         const val = exportCustomScalePreset.value;
         if (val === "none") {
           exportCustomMultiplier.value = 1.0;
-          exportCustomOffset.value = 0.0;
-          exportCustomScalingRow.style.display = "none";
-        } else if (val === "kelvin_to_celsius") {
-          exportCustomMultiplier.value = 1.0;
-          exportCustomOffset.value = -273.15;
-          exportCustomScalingRow.style.display = "none";
-        } else if (val === "modis_ndvi") {
-          exportCustomMultiplier.value = 0.0001;
-          exportCustomOffset.value = 0.0;
-          exportCustomScalingRow.style.display = "none";
-        } else if (val === "percentage") {
-          exportCustomMultiplier.value = 100.0;
           exportCustomOffset.value = 0.0;
           exportCustomScalingRow.style.display = "none";
         } else if (val === "custom") {
@@ -168,21 +159,32 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (exportCustomBandSelect) {
       exportCustomBandSelect.addEventListener("change", () => {
-        const bandId = exportCustomBandSelect.value;
-        const band = exportBandsMetadata.find(b => b.id === bandId);
-        if (!band) return;
-
-        // Auto-configure unit scaling preset
-        if (band.units === "K" || band.id.toLowerCase().includes("temp")) {
-          exportCustomScalePreset.value = "kelvin_to_celsius";
-        } else if (band.scale !== 1.0 || band.offset !== 0.0) {
-          exportCustomScalePreset.value = "custom";
-          exportCustomMultiplier.value = band.scale;
-          exportCustomOffset.value = band.offset;
-        } else {
-          exportCustomScalePreset.value = "none";
-        }
+        // Reset scale preset to original values (no scaling)
+        exportCustomScalePreset.value = "none";
         exportCustomScalePreset.dispatchEvent(new Event("change"));
+      });
+    }
+
+    if (exportScaleSelect && exportScaleCustom) {
+      exportScaleSelect.addEventListener("change", (e) => {
+        if (e.target.value === "custom") {
+          exportScaleCustom.style.display = "block";
+          exportScaleCustom.required = true;
+        } else {
+          exportScaleCustom.style.display = "none";
+          exportScaleCustom.required = false;
+          if (e.target.value === "native") {
+            const val = exportDatasetSelect.value;
+            if (val === "custom") {
+              exportScaleCustom.value = exportScaleCustom.dataset.nativeResolution || 5000;
+            } else {
+              const meta = datasetMetadata[val];
+              if (meta) exportScaleCustom.value = meta.res;
+            }
+          } else {
+            exportScaleCustom.value = parseInt(e.target.value, 10);
+          }
+        }
       });
     }
 
@@ -223,6 +225,18 @@ document.addEventListener("DOMContentLoaded", () => {
           });
 
           loadedExportAssetType = data.type;
+          exportScaleCustom.dataset.nativeResolution = data.resolution;
+          exportScaleCustom.value = data.resolution;
+          if (exportScaleSelect) {
+            const nativeOption = exportScaleSelect.querySelector('option[value="native"]');
+            if (nativeOption) {
+              nativeOption.textContent = `${data.resolution.toLocaleString()}m (Native)`;
+            }
+            exportScaleSelect.value = "native";
+            exportScaleCustom.style.display = "none";
+            exportScaleCustom.required = false;
+          }
+
           if (data.type === "Image") {
             if (exportDateRow) exportDateRow.style.display = "none";
             if (exportCustomReducerGroup) exportCustomReducerGroup.style.display = "none";
@@ -258,8 +272,32 @@ document.addEventListener("DOMContentLoaded", () => {
         updateDatasetUI(exportDatasetSelect.value, exportDatasetInfoBox, exportStartDateInput, exportEndDateInput, exportDateRow);
         if (exportDatasetSelect.value === "custom") {
           if (exportCustomPanel) exportCustomPanel.style.display = "flex";
+          exportScaleCustom.value = exportScaleCustom.dataset.nativeResolution || 5000;
+          if (exportScaleSelect) {
+            const nativeOption = exportScaleSelect.querySelector('option[value="native"]');
+            if (nativeOption) {
+              const resText = exportScaleCustom.dataset.nativeResolution ? `${parseInt(exportScaleCustom.dataset.nativeResolution).toLocaleString()}m` : "5,000m";
+              nativeOption.textContent = `${resText} (Native)`;
+            }
+            exportScaleSelect.value = "native";
+            exportScaleCustom.style.display = "none";
+            exportScaleCustom.required = false;
+          }
         } else {
           if (exportCustomPanel) exportCustomPanel.style.display = "none";
+          const meta = datasetMetadata[exportDatasetSelect.value];
+          if (meta && exportScaleCustom) {
+            exportScaleCustom.value = meta.res;
+            if (exportScaleSelect) {
+              const nativeOption = exportScaleSelect.querySelector('option[value="native"]');
+              if (nativeOption) {
+                nativeOption.textContent = `${meta.res.toLocaleString()}m (Native)`;
+              }
+              exportScaleSelect.value = "native";
+              exportScaleCustom.style.display = "none";
+              exportScaleCustom.required = false;
+            }
+          }
         }
       });
       // Trigger initial load
@@ -489,26 +527,14 @@ document.addEventListener("DOMContentLoaded", () => {
         const band = mapBandsMetadata.find(b => b.id === bandId);
         if (!band) return;
 
-        // 1. Auto-configure unit scaling preset
-        if (band.units === "K" || band.id.toLowerCase().includes("temp")) {
-          mapCustomScalePreset.value = "kelvin_to_celsius";
-        } else if (band.scale !== 1.0 || band.offset !== 0.0) {
-          mapCustomScalePreset.value = "custom";
-          mapCustomMultiplier.value = band.scale;
-          mapCustomOffset.value = band.offset;
-        } else {
-          mapCustomScalePreset.value = "none";
-        }
+        // Reset scale preset to original values (no scaling)
+        mapCustomScalePreset.value = "none";
         mapCustomScalePreset.dispatchEvent(new Event("change"));
 
         // 2. Auto-configure recommended visualization parameters
         if (band.vis) {
-          // If Kelvin units are auto-converted to Celsius, scale down min/max bounds as well!
-          const isKelvinConversion = mapCustomScalePreset.value === "kelvin_to_celsius";
-          const shift = isKelvinConversion ? -273.15 : 0.0;
-          
-          mapCustomVisMin.value = (band.vis.min + shift).toFixed(2);
-          mapCustomVisMax.value = (band.vis.max + shift).toFixed(2);
+          mapCustomVisMin.value = band.vis.min.toFixed(2);
+          mapCustomVisMax.value = band.vis.max.toFixed(2);
           
           if (band.vis.palette && band.vis.palette.length > 0) {
             let recOpt = document.getElementById("map_custom_palette_recommended");
@@ -633,6 +659,18 @@ document.addEventListener("DOMContentLoaded", () => {
           });
 
           loadedMapAssetType = data.type;
+          mapScaleCustom.dataset.nativeResolution = data.resolution;
+          mapScaleCustom.value = data.resolution;
+          if (mapScaleSelect) {
+            const nativeOption = mapScaleSelect.querySelector('option[value="native"]');
+            if (nativeOption) {
+              nativeOption.textContent = `${data.resolution.toLocaleString()}m (Native)`;
+            }
+            mapScaleSelect.value = "native";
+            mapScaleCustom.style.display = "none";
+            mapScaleCustom.required = false;
+          }
+
           if (data.type === "Image") {
             if (mapDateRow) mapDateRow.style.display = "none";
             if (mapCustomReducerGroup) mapCustomReducerGroup.style.display = "none";
@@ -671,27 +709,33 @@ document.addEventListener("DOMContentLoaded", () => {
         
         if (datasetSelect.value === "custom") {
           if (mapCustomPanel) mapCustomPanel.style.display = "flex";
+          mapScaleCustom.value = mapScaleCustom.dataset.nativeResolution || 5000;
+          if (mapScaleSelect) {
+            const nativeOption = mapScaleSelect.querySelector('option[value="native"]');
+            if (nativeOption) {
+              const resText = mapScaleCustom.dataset.nativeResolution ? `${parseInt(mapScaleCustom.dataset.nativeResolution).toLocaleString()}m` : "5,000m";
+              nativeOption.textContent = `${resText} (Native)`;
+            }
+            mapScaleSelect.value = "native";
+            mapScaleCustom.style.display = "none";
+            mapScaleCustom.required = false;
+          }
         } else {
           if (mapCustomPanel) mapCustomPanel.style.display = "none";
-        }
-        
-        // Map scale update logic
-        const meta = datasetMetadata[datasetSelect.value];
-        if (meta && mapScaleCustom) {
-          mapScaleCustom.value = meta.res;
           
-          if (mapScaleSelect) {
-            const nativeOption = mapScaleSelect.querySelector('option[value="native"]');
-            if (nativeOption) {
-              nativeOption.textContent = `${meta.res.toLocaleString()}m (Native)`;
-            }
-          }
-        } else if (datasetSelect.value === "custom" && mapScaleCustom) {
-          mapScaleCustom.value = 5000;
-          if (mapScaleSelect) {
-            const nativeOption = mapScaleSelect.querySelector('option[value="native"]');
-            if (nativeOption) {
-              nativeOption.textContent = "5,000m (Default Custom)";
+          // Map scale update logic
+          const meta = datasetMetadata[datasetSelect.value];
+          if (meta && mapScaleCustom) {
+            mapScaleCustom.value = meta.res;
+            
+            if (mapScaleSelect) {
+              const nativeOption = mapScaleSelect.querySelector('option[value="native"]');
+              if (nativeOption) {
+                nativeOption.textContent = `${meta.res.toLocaleString()}m (Native)`;
+              }
+              mapScaleSelect.value = "native";
+              mapScaleCustom.style.display = "none";
+              mapScaleCustom.required = false;
             }
           }
         }

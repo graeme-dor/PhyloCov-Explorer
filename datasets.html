@@ -94,9 +94,6 @@
                     <label for="export_custom_scale_preset" style="font-size: 0.85rem; font-weight: 600;">Scale & Unit Conversion</label>
                     <select id="export_custom_scale_preset" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
                       <option value="none">Keep Original Values (No Scaling)</option>
-                      <option value="kelvin_to_celsius">Convert Kelvin to Celsius (-273.15)</option>
-                      <option value="modis_ndvi">Scale MODIS NDVI (x0.0001)</option>
-                      <option value="percentage">Scale to Percentage (x100)</option>
                       <option value="custom">Custom Formula...</option>
                     </select>
                   </div>
@@ -131,8 +128,15 @@
               </div>
 
               <div class="form-group">
-                <label for="scale">Resolution Scale (meters)</label>
-                <input type="number" id="scale" name="scale" value="5000" min="30" required>
+                <label for="export_scale_select">Resolution Scale (meters)</label>
+                <select id="export_scale_select" required style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                  <option value="native">Native Dataset Resolution</option>
+                  <option value="1000">1km (High Res)</option>
+                  <option value="5000">5km (Medium Res)</option>
+                  <option value="10000">10km (Coarse Res)</option>
+                  <option value="custom">Custom...</option>
+                </select>
+                <input type="number" id="scale" name="scale" value="5000" min="30" style="display: none; margin-top: 0.5rem;" placeholder="Enter custom resolution (m)">
               </div>
 
               <button type="submit" class="export-btn" id="exportBtn">Start Export</button>

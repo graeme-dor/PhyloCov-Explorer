@@ -406,9 +406,24 @@ def get_dataset_info(id: str):
                 "vis": None
             })
 
+    # Retrieve nominal scale resolution dynamically from GEE projection info
+    native_res = 5000
+    try:
+        if direct_bands:
+            first_band = [b for b in direct_bands if b != "range"][0] # exclude virtual range band
+            if asset_type == "Image":
+                native_res = int(round(img.select(first_band).projection().nominalScale().getInfo()))
+            else:
+                first_img = col.first()
+                if first_img:
+                    native_res = int(round(first_img.select(first_band).projection().nominalScale().getInfo()))
+    except Exception:
+        pass
+
     return {
         "type": asset_type,
         "asset_id": asset_id,
+        "resolution": native_res,
         "bands": rich_bands
     }
 
