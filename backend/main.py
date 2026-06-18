@@ -421,16 +421,25 @@ def get_dataset_info(id: str):
         pass
 
     # Snap commonly found nominal scales to standard GEE catalog resolutions
-    if 900 <= native_res <= 1000:
-        native_res = 1000
-    elif 450 <= native_res <= 500:
-        native_res = 500
+    if 25 <= native_res <= 35:
+        native_res = 30
+    elif 80 <= native_res <= 100:
+        native_res = 90
     elif 220 <= native_res <= 260:
         native_res = 250
-    elif 27000 <= native_res <= 28500:
-        native_res = 27830
+    elif 450 <= native_res <= 510:
+        native_res = 500
+    elif 900 <= native_res <= 1050:
+        native_res = 1000
+    elif 4000 <= native_res <= 4900:
+        native_res = 4638
+    elif 5000 <= native_res <= 6000:
+        native_res = 5566
     elif 11000 <= native_res <= 11300:
         native_res = 11132
+    elif 27000 <= native_res <= 28500:
+        native_res = 27830
+
 
     return {
         "type": asset_type,

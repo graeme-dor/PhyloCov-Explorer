@@ -834,8 +834,6 @@ document.addEventListener("DOMContentLoaded", () => {
      document.getElementById("map_custom_reducer"),
      document.getElementById("map_custom_multiplier"),
      document.getElementById("map_custom_offset"),
-     document.getElementById("map_custom_vis_min"),
-     document.getElementById("map_custom_vis_max"),
      document.getElementById("map_custom_palette")
     ].forEach(el => {
       if (el) el.addEventListener("change", triggerMapUpdate);
