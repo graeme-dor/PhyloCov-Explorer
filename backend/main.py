@@ -109,17 +109,7 @@ PRESETS = {
         "vis_min": -10.0,
         "vis_max": 25.0
     },
-    "modis_lst_range": {
-        "asset": "MODIS/061/MOD21C3",
-        "band": "range",
-        "reducer": "mean",
-        "multiplier": 1.0,
-        "offset": -273.15,
-        "is_monthly": True,
-        "palette": ['#ffffd9', '#edf8b1', '#7fcdbb', '#41b6c4', '#1d91c0', '#225ea8', '#081d58'],
-        "vis_min": 5.0,
-        "vis_max": 25.0
-    },
+
     "modis_ndvi": {
         "asset": "MODIS/061/MOD13Q1",
         "band": "NDVI",
@@ -167,18 +157,7 @@ def process_gee_image(
         if preset_key == "srtm":
             return ee.Image(asset_id).select(target_band)
             
-        if preset_key == "modis_lst_range":
-            adjusted_start, adjusted_end = adjust_monthly_dates(start_date, end_date)
-            img_col = ee.ImageCollection(asset_id).filterDate(adjusted_start, adjusted_end)
-            if img_col.size().getInfo() == 0:
-                raise HTTPException(
-                    status_code=400, 
-                    detail="No data available in this date range for MODIS LST Day-Night Range."
-                )
-            day = img_col.select("LST_Day").mean().subtract(273.15)
-            night = img_col.select("LST_Night").mean().subtract(273.15)
-            return day.subtract(night)
-            
+
         if is_monthly:
             adjusted_start, adjusted_end = adjust_monthly_dates(start_date, end_date)
         else:
@@ -329,10 +308,6 @@ def get_dataset_info(id: str):
                 status_code=400,
                 detail=f"Failed to load GEE asset '{asset_id}'. Error: {err_msg}"
             )
-
-    if preset_key == "modis_lst_range":
-        if "range" not in direct_bands:
-            direct_bands.append("range")
 
     stac_data = fetch_stac_metadata(asset_id)
     stac_bands = {}
