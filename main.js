@@ -608,7 +608,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
           if (mapCustomBandGroup) mapCustomBandGroup.style.display = "flex";
           if (mapCustomScalePresetGroup) mapCustomScalePresetGroup.style.display = "flex";
-          if (mapCustomVisRow) mapCustomVisRow.style.display = "flex";
           if (mapCustomPaletteGroup) mapCustomPaletteGroup.style.display = "flex";
           
           // Trigger band select change to auto-load ranges & units
