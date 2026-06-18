@@ -452,6 +452,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const mapCustomVisMin = document.getElementById("map_custom_vis_min");
     const mapCustomVisMax = document.getElementById("map_custom_vis_max");
     const mapCustomPalette = document.getElementById("map_custom_palette");
+    const mapCustomAutofitBtn = document.getElementById("map_custom_autofit_btn");
 
     let loadedMapAssetType = "ImageCollection";
     let mapBandsMetadata = [];
@@ -540,6 +541,59 @@ document.addEventListener("DOMContentLoaded", () => {
       if (mapCustomPalette.value === "recommended") {
         mapCustomPalette.value = "viridis";
       }
+    }
+
+    if (mapCustomAutofitBtn) {
+      mapCustomAutofitBtn.addEventListener("click", async () => {
+        const dataset = datasetSelect.value;
+        const isCustom = dataset === "custom";
+        const customAsset = mapCustomAssetInput.value.trim();
+        const assetId = isCustom ? customAsset : dataset;
+
+        if (!assetId) {
+          alert("Please select a dataset or enter a GEE Asset ID first.");
+          return;
+        }
+        if (selectedROIs.size === 0) {
+          alert("Please select at least one Country or Continent first.");
+          return;
+        }
+
+        const originalText = mapCustomAutofitBtn.innerHTML;
+        mapCustomAutofitBtn.disabled = true;
+        mapCustomAutofitBtn.innerHTML = "<span>⏳</span> Calc";
+
+        const startDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-01" : startDateInput.value;
+        const endDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-02" : endDateInput.value;
+        const roiType = document.querySelector('input[name="roi_type"]:checked').value;
+        const roiNames = Array.from(selectedROIs).join(",");
+
+        let queryUrl = `${BACKEND_URL}/datasets/range?dataset=${encodeURIComponent(assetId)}&start_date=${startDate}&end_date=${endDate}&roi_type=${roiType}&roi_names=${encodeURIComponent(roiNames)}`;
+
+        if (isCustom) {
+          const band = mapCustomBandSelect.value;
+          const reducer = document.getElementById("map_custom_reducer").value;
+          const multiplier = parseFloat(document.getElementById("map_custom_multiplier").value) || 1.0;
+          const offset = parseFloat(document.getElementById("map_custom_offset").value) || 0.0;
+          queryUrl += `&band=${encodeURIComponent(band)}&reducer=${encodeURIComponent(reducer)}&multiplier=${multiplier}&offset=${offset}`;
+        }
+
+        try {
+          const res = await fetch(queryUrl);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "Failed to calculate range");
+
+          mapCustomVisMin.value = parseFloat(data.min).toFixed(2);
+          mapCustomVisMax.value = parseFloat(data.max).toFixed(2);
+          
+          triggerMapUpdate();
+        } catch (err) {
+          alert("Error calculating dynamic range: " + err.message);
+        } finally {
+          mapCustomAutofitBtn.disabled = false;
+          mapCustomAutofitBtn.innerHTML = originalText;
+        }
+      });
     }
 
     if (mapCustomLoadBtn) {

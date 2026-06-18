@@ -609,6 +609,102 @@ def get_export_download_url(task_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating download URL: {str(e)}")
 
+@app.get("/datasets/range")
+def get_dataset_range(
+    dataset: str,
+    start_date: str,
+    end_date: str,
+    roi_type: str = "country",
+    roi_names: Optional[str] = None,
+    band: Optional[str] = None,
+    reducer: str = "mean",
+    multiplier: float = 1.0,
+    offset: float = 0.0
+):
+    if not roi_names:
+        raise HTTPException(status_code=400, detail="Missing Region of Interest (roi_names) parameter.")
+        
+    try:
+        # 1. Fetch ROI feature bounds
+        names_list = roi_names.split(",")
+        lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
+        if roi_type == "region":
+            roi = lsib.filter(ee.Filter.inList("wld_rgn", names_list))
+        else:
+            roi = lsib.filter(ee.Filter.inList("country_na", names_list))
+            
+        if roi.size().getInfo() == 0:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"{roi_type.capitalize()}s '{roi_names}' not found in USDOS/LSIB_SIMPLE/2017"
+            )
+            
+        bounds = roi.geometry().bounds()
+        
+        # 2. Get fully processed image
+        img = process_gee_image(
+            dataset=dataset,
+            start_date=start_date,
+            end_date=end_date,
+            band=band,
+            reducer=reducer,
+            multiplier=multiplier,
+            offset=offset
+        )
+        
+        # Determine calculation scale based on ROI type
+        calc_scale = 50000 if roi_type == "region" else 25000
+        
+        # 3. Calculate minMax statistics over the bounding box
+        stats = img.reduceRegion(
+            reducer=ee.Reducer.minMax(),
+            geometry=bounds,
+            scale=calc_scale,
+            maxPixels=1e9
+        ).getInfo()
+        
+        if not stats:
+            raise HTTPException(status_code=404, detail="No pixels found in this region.")
+            
+        # The key names are usually like "band_min" and "band_max" (e.g. "value_min", "precipitation_max")
+        min_val = None
+        max_val = None
+        
+        for k, val in stats.items():
+            if val is None:
+                continue
+            if k.endswith("_min"):
+                min_val = val
+            elif k.endswith("_max"):
+                max_val = val
+                
+        if min_val is None or max_val is None:
+            # Fallback
+            values = [v for v in stats.values() if v is not None]
+            if len(values) >= 2:
+                min_val = min(values)
+                max_val = max(values)
+            elif len(values) == 1:
+                min_val = values[0]
+                max_val = values[0]
+            else:
+                min_val = 0.0
+                max_val = 1.0
+                
+        # Handle flat region case (min == max)
+        if min_val == max_val:
+            min_val = min_val - 1.0
+            max_val = max_val + 1.0
+            
+        return {
+            "min": float(min_val),
+            "max": float(max_val)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to calculate range: {str(e)}")
+
 @app.get("/map")
 def get_map_tiles(
     dataset: str,
