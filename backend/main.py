@@ -420,6 +420,18 @@ def get_dataset_info(id: str):
     except Exception:
         pass
 
+    # Snap commonly found nominal scales to standard GEE catalog resolutions
+    if 900 <= native_res <= 1000:
+        native_res = 1000
+    elif 450 <= native_res <= 500:
+        native_res = 500
+    elif 220 <= native_res <= 260:
+        native_res = 250
+    elif 27000 <= native_res <= 28500:
+        native_res = 27830
+    elif 11000 <= native_res <= 11300:
+        native_res = 11132
+
     return {
         "type": asset_type,
         "asset_id": asset_id,
@@ -624,101 +636,7 @@ def get_export_download_url(task_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating download URL: {str(e)}")
 
-@app.get("/datasets/range")
-def get_dataset_range(
-    dataset: str,
-    start_date: str,
-    end_date: str,
-    roi_type: str = "country",
-    roi_names: Optional[str] = None,
-    band: Optional[str] = None,
-    reducer: str = "mean",
-    multiplier: float = 1.0,
-    offset: float = 0.0
-):
-    if not roi_names:
-        raise HTTPException(status_code=400, detail="Missing Region of Interest (roi_names) parameter.")
-        
-    try:
-        # 1. Fetch ROI feature bounds
-        names_list = roi_names.split(",")
-        lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
-        if roi_type == "region":
-            roi = lsib.filter(ee.Filter.inList("wld_rgn", names_list))
-        else:
-            roi = lsib.filter(ee.Filter.inList("country_na", names_list))
-            
-        if roi.size().getInfo() == 0:
-            raise HTTPException(
-                status_code=404, 
-                detail=f"{roi_type.capitalize()}s '{roi_names}' not found in USDOS/LSIB_SIMPLE/2017"
-            )
-            
-        bounds = roi.geometry().bounds()
-        
-        # 2. Get fully processed image
-        img = process_gee_image(
-            dataset=dataset,
-            start_date=start_date,
-            end_date=end_date,
-            band=band,
-            reducer=reducer,
-            multiplier=multiplier,
-            offset=offset
-        )
-        
-        # Determine calculation scale based on ROI type
-        calc_scale = 50000 if roi_type == "region" else 25000
-        
-        # 3. Calculate minMax statistics over the bounding box
-        stats = img.reduceRegion(
-            reducer=ee.Reducer.minMax(),
-            geometry=bounds,
-            scale=calc_scale,
-            maxPixels=1e9
-        ).getInfo()
-        
-        if not stats:
-            raise HTTPException(status_code=404, detail="No pixels found in this region.")
-            
-        # The key names are usually like "band_min" and "band_max" (e.g. "value_min", "precipitation_max")
-        min_val = None
-        max_val = None
-        
-        for k, val in stats.items():
-            if val is None:
-                continue
-            if k.endswith("_min"):
-                min_val = val
-            elif k.endswith("_max"):
-                max_val = val
-                
-        if min_val is None or max_val is None:
-            # Fallback
-            values = [v for v in stats.values() if v is not None]
-            if len(values) >= 2:
-                min_val = min(values)
-                max_val = max(values)
-            elif len(values) == 1:
-                min_val = values[0]
-                max_val = values[0]
-            else:
-                min_val = 0.0
-                max_val = 1.0
-                
-        # Handle flat region case (min == max)
-        if min_val == max_val:
-            min_val = min_val - 1.0
-            max_val = max_val + 1.0
-            
-        return {
-            "min": float(min_val),
-            "max": float(max_val)
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to calculate range: {str(e)}")
+
 
 @app.get("/map")
 def get_map_tiles(
@@ -763,8 +681,58 @@ def get_map_tiles(
                 "palette": preset["palette"]
             }
         else:
-            v_min = vis_min if vis_min is not None else 0.0
-            v_max = vis_max if vis_max is not None else 1.0
+            v_min = 0.0
+            v_max = 1.0
+            
+            # Automatically calculate dynamic min and max over the ROI bounding box
+            if roi_names:
+                try:
+                    names_list = roi_names.split(",")
+                    lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
+                    if roi_type == "region":
+                        roi_feat = lsib.filter(ee.Filter.inList("wld_rgn", names_list))
+                    else:
+                        roi_feat = lsib.filter(ee.Filter.inList("country_na", names_list))
+                        
+                    if roi_feat.size().getInfo() > 0:
+                        bounds_geom = roi_feat.geometry().bounds()
+                        calc_scale = 50000 if roi_type == "region" else 25000
+                        stats = img.reduceRegion(
+                            reducer=ee.Reducer.minMax(),
+                            geometry=bounds_geom,
+                            scale=calc_scale,
+                            maxPixels=1e9
+                        ).getInfo()
+                        
+                        if stats:
+                            min_val = None
+                            max_val = None
+                            for k, val in stats.items():
+                                if val is None:
+                                    continue
+                                if k.endswith("_min"):
+                                    min_val = val
+                                elif k.endswith("_max"):
+                                    max_val = val
+                                    
+                            if min_val is not None and max_val is not None:
+                                if min_val == max_val:
+                                    min_val -= 1.0
+                                    max_val += 1.0
+                                v_min = float(min_val)
+                                v_max = float(max_val)
+                            else:
+                                values = [v for v in stats.values() if v is not None]
+                                if len(values) >= 2:
+                                    v_min = float(min(values))
+                                    v_max = float(max(values))
+                                    if v_min == v_max:
+                                        v_min -= 1.0
+                                        v_max += 1.0
+                except Exception as e_range:
+                    print(f"Dynamic map scaling range calculation failed: {e_range}")
+                    v_min = 0.0
+                    v_max = 100.0
             
             palette_list = ['#440154', '#414487', '#2a788e', '#22a884', '#7ad151', '#fde725'] # Default viridis
             if palette:

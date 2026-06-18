@@ -482,15 +482,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const mapCustomReducerGroup = document.getElementById("map_custom_reducer_group");
     const mapCustomScalePresetGroup = document.getElementById("map_custom_scale_preset_group");
     const mapCustomScalingRow = document.getElementById("map_custom_scaling_row");
-    const mapCustomVisRow = document.getElementById("map_custom_vis_row");
     const mapCustomPaletteGroup = document.getElementById("map_custom_palette_group");
     const mapCustomScalePreset = document.getElementById("map_custom_scale_preset");
     const mapCustomMultiplier = document.getElementById("map_custom_multiplier");
     const mapCustomOffset = document.getElementById("map_custom_offset");
-    const mapCustomVisMin = document.getElementById("map_custom_vis_min");
-    const mapCustomVisMax = document.getElementById("map_custom_vis_max");
     const mapCustomPalette = document.getElementById("map_custom_palette");
-    const mapCustomAutofitBtn = document.getElementById("map_custom_autofit_btn");
 
     let loadedMapAssetType = "ImageCollection";
     let mapBandsMetadata = [];
@@ -531,30 +527,20 @@ document.addEventListener("DOMContentLoaded", () => {
         mapCustomScalePreset.value = "none";
         mapCustomScalePreset.dispatchEvent(new Event("change"));
 
-        // 2. Auto-configure recommended visualization parameters
-        if (band.vis) {
-          mapCustomVisMin.value = band.vis.min.toFixed(2);
-          mapCustomVisMax.value = band.vis.max.toFixed(2);
-          
-          if (band.vis.palette && band.vis.palette.length > 0) {
-            let recOpt = document.getElementById("map_custom_palette_recommended");
-            if (!recOpt) {
-              recOpt = document.createElement("option");
-              recOpt.id = "map_custom_palette_recommended";
-              recOpt.value = "recommended";
-              mapCustomPalette.appendChild(recOpt);
-            }
-            recOpt.textContent = `Recommended (${band.id} Palette)`;
-            recOpt.style.display = "block";
-            mapCustomPalette.value = "recommended";
-            mapCustomPalette.dataset.customPalette = band.vis.palette.join(",");
-          } else {
-            hideRecommendedPalette();
+        // 2. Configure recommended visualization palette parameters
+        if (band.vis && band.vis.palette && band.vis.palette.length > 0) {
+          let recOpt = document.getElementById("map_custom_palette_recommended");
+          if (!recOpt) {
+            recOpt = document.createElement("option");
+            recOpt.id = "map_custom_palette_recommended";
+            recOpt.value = "recommended";
+            mapCustomPalette.appendChild(recOpt);
           }
+          recOpt.textContent = `Recommended (${band.id} Palette)`;
+          recOpt.style.display = "block";
+          mapCustomPalette.value = "recommended";
+          mapCustomPalette.dataset.customPalette = band.vis.palette.join(",");
         } else {
-          // Defaults if no recommended vis parameters
-          mapCustomVisMin.value = 0;
-          mapCustomVisMax.value = 100;
           hideRecommendedPalette();
         }
         triggerMapUpdate();
@@ -567,59 +553,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (mapCustomPalette.value === "recommended") {
         mapCustomPalette.value = "viridis";
       }
-    }
-
-    if (mapCustomAutofitBtn) {
-      mapCustomAutofitBtn.addEventListener("click", async () => {
-        const dataset = datasetSelect.value;
-        const isCustom = dataset === "custom";
-        const customAsset = mapCustomAssetInput.value.trim();
-        const assetId = isCustom ? customAsset : dataset;
-
-        if (!assetId) {
-          alert("Please select a dataset or enter a GEE Asset ID first.");
-          return;
-        }
-        if (selectedROIs.size === 0) {
-          alert("Please select at least one Country or Continent first.");
-          return;
-        }
-
-        const originalText = mapCustomAutofitBtn.innerHTML;
-        mapCustomAutofitBtn.disabled = true;
-        mapCustomAutofitBtn.innerHTML = "<span>⏳</span> Calc";
-
-        const startDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-01" : startDateInput.value;
-        const endDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-02" : endDateInput.value;
-        const roiType = document.querySelector('input[name="roi_type"]:checked').value;
-        const roiNames = Array.from(selectedROIs).join(",");
-
-        let queryUrl = `${BACKEND_URL}/datasets/range?dataset=${encodeURIComponent(assetId)}&start_date=${startDate}&end_date=${endDate}&roi_type=${roiType}&roi_names=${encodeURIComponent(roiNames)}`;
-
-        if (isCustom) {
-          const band = mapCustomBandSelect.value;
-          const reducer = document.getElementById("map_custom_reducer").value;
-          const multiplier = parseFloat(document.getElementById("map_custom_multiplier").value) || 1.0;
-          const offset = parseFloat(document.getElementById("map_custom_offset").value) || 0.0;
-          queryUrl += `&band=${encodeURIComponent(band)}&reducer=${encodeURIComponent(reducer)}&multiplier=${multiplier}&offset=${offset}`;
-        }
-
-        try {
-          const res = await fetch(queryUrl);
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.detail || "Failed to calculate range");
-
-          mapCustomVisMin.value = parseFloat(data.min).toFixed(2);
-          mapCustomVisMax.value = parseFloat(data.max).toFixed(2);
-          
-          triggerMapUpdate();
-        } catch (err) {
-          alert("Error calculating dynamic range: " + err.message);
-        } finally {
-          mapCustomAutofitBtn.disabled = false;
-          mapCustomAutofitBtn.innerHTML = originalText;
-        }
-      });
     }
 
     if (mapCustomLoadBtn) {
@@ -857,14 +790,12 @@ document.addEventListener("DOMContentLoaded", () => {
           const reducer = document.getElementById("map_custom_reducer").value;
           const multiplier = parseFloat(document.getElementById("map_custom_multiplier").value) || 1.0;
           const offset = parseFloat(document.getElementById("map_custom_offset").value) || 0.0;
-          const vis_min = parseFloat(document.getElementById("map_custom_vis_min").value) || 0.0;
-          const vis_max = parseFloat(document.getElementById("map_custom_vis_max").value) || 100.0;
           let palette = document.getElementById("map_custom_palette").value;
           if (palette === "recommended" && mapCustomPalette.dataset.customPalette) {
             palette = mapCustomPalette.dataset.customPalette;
           }
           
-          queryUrl += `&band=${encodeURIComponent(band)}&reducer=${encodeURIComponent(reducer)}&multiplier=${multiplier}&offset=${offset}&vis_min=${vis_min}&vis_max=${vis_max}&palette=${encodeURIComponent(palette)}`;
+          queryUrl += `&band=${encodeURIComponent(band)}&reducer=${encodeURIComponent(reducer)}&multiplier=${multiplier}&offset=${offset}&palette=${encodeURIComponent(palette)}`;
         }
 
         const response = await fetch(queryUrl);
