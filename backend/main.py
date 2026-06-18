@@ -489,9 +489,15 @@ def create_export(req: ExportRequest):
             
         file_prefix = f"exports/{req.dataset}/PhyloCov_{req.dataset}_{safe_roi}_{req.start_date}_to_{req.end_date}_scale{req.scale}m_{job_id}"
         
+        # Sanitize Earth Engine task description: only a-zA-Z0-9.,:;_- allowed, max 100 characters.
+        raw_description = f"Export_{req.dataset}_{safe_roi}_{job_id}"
+        safe_description = "".join([c if c.isalnum() or c in ".,:;-_" else "_" for c in raw_description])
+        if len(safe_description) > 100:
+            safe_description = safe_description[:63] + "_" + job_id
+
         task = ee.batch.Export.image.toCloudStorage(
             image=img,
-            description=f"Export_{req.dataset}_{safe_roi}_{job_id}",
+            description=safe_description,
             bucket=GCS_BUCKET,
             fileNamePrefix=file_prefix,
             scale=req.scale,
