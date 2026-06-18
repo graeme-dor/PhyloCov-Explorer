@@ -51,6 +51,196 @@ def adjust_monthly_dates(start_date_str: str, end_date_str: str):
             detail=f"Invalid date format. Must be YYYY-MM-DD. Error: {str(e)}"
         )
 
+PRESETS = {
+    "chirps": {
+        "asset": "UCSB-CHG/CHIRPS/DAILY",
+        "band": "precipitation",
+        "reducer": "mean",
+        "multiplier": 1.0,
+        "offset": 0.0,
+        "is_monthly": False,
+        "palette": ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494'],
+        "vis_min": 0.0,
+        "vis_max": 50.0
+    },
+    "era5": {
+        "asset": "ECMWF/ERA5/DAILY",
+        "band": "mean_2m_air_temperature",
+        "reducer": "mean",
+        "multiplier": 1.0,
+        "offset": -273.15,
+        "is_monthly": False,
+        "palette": ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026'],
+        "vis_min": 0.0,
+        "vis_max": 40.0
+    },
+    "era5_land_monthly": {
+        "asset": "ECMWF/ERA5_LAND/MONTHLY_AGGR",
+        "band": "temperature_2m",
+        "reducer": "mean",
+        "multiplier": 1.0,
+        "offset": -273.15,
+        "is_monthly": True,
+        "palette": ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026'],
+        "vis_min": 0.0,
+        "vis_max": 40.0
+    },
+    "modis_lst_day": {
+        "asset": "MODIS/061/MOD21C3",
+        "band": "LST_Day",
+        "reducer": "mean",
+        "multiplier": 1.0,
+        "offset": -273.15,
+        "is_monthly": True,
+        "palette": ['#313695', '#4575b4', '#74add1', '#ffffbf', '#fee090', '#f46d43', '#a50026'],
+        "vis_min": 0.0,
+        "vis_max": 40.0
+    },
+    "modis_lst_night": {
+        "asset": "MODIS/061/MOD21C3",
+        "band": "LST_Night",
+        "reducer": "mean",
+        "multiplier": 1.0,
+        "offset": -273.15,
+        "is_monthly": True,
+        "palette": ['#053061', '#2166ac', '#4393c3', '#f7f7f7', '#fddbc7', '#d6604f', '#b2182b'],
+        "vis_min": -10.0,
+        "vis_max": 25.0
+    },
+    "modis_lst_range": {
+        "asset": "MODIS/061/MOD21C3",
+        "band": "range",
+        "reducer": "mean",
+        "multiplier": 1.0,
+        "offset": -273.15,
+        "is_monthly": True,
+        "palette": ['#ffffd9', '#edf8b1', '#7fcdbb', '#41b6c4', '#1d91c0', '#225ea8', '#081d58'],
+        "vis_min": 5.0,
+        "vis_max": 25.0
+    },
+    "modis_ndvi": {
+        "asset": "MODIS/061/MOD13Q1",
+        "band": "NDVI",
+        "reducer": "mean",
+        "multiplier": 0.0001,
+        "offset": 0.0,
+        "is_monthly": False,
+        "palette": ['#FFFFFF', '#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400', '#3E8601', '#207401', '#056201', '#004C00', '#023B01', '#012E01', '#011D01', '#011301'],
+        "vis_min": 0.0,
+        "vis_max": 1.0
+    },
+    "srtm": {
+        "asset": "USGS/SRTMGL1_003",
+        "band": "elevation",
+        "reducer": "none",
+        "multiplier": 1.0,
+        "offset": 0.0,
+        "is_monthly": False,
+        "palette": ['#000000', '#478FCD', '#86C58E', '#AFC35E', '#8F7131', '#B78D4C', '#E2B8A6', '#FFFFFF'],
+        "vis_min": 0.0,
+        "vis_max": 3000.0
+    }
+}
+
+def process_gee_image(
+    dataset: str,
+    start_date: str,
+    end_date: str,
+    band: Optional[str] = None,
+    reducer: str = "mean",
+    multiplier: float = 1.0,
+    offset: float = 0.0
+) -> ee.Image:
+    preset_key = dataset.lower()
+    
+    if preset_key in PRESETS:
+        preset = PRESETS[preset_key]
+        asset_id = preset["asset"]
+        target_band = preset["band"]
+        target_reducer = preset["reducer"]
+        target_multiplier = preset["multiplier"]
+        target_offset = preset["offset"]
+        is_monthly = preset["is_monthly"]
+        
+        if preset_key == "srtm":
+            return ee.Image(asset_id).select(target_band)
+            
+        if preset_key == "modis_lst_range":
+            adjusted_start, adjusted_end = adjust_monthly_dates(start_date, end_date)
+            img_col = ee.ImageCollection(asset_id).filterDate(adjusted_start, adjusted_end)
+            day = img_col.select("LST_Day").mean().subtract(273.15)
+            night = img_col.select("LST_Night").mean().subtract(273.15)
+            return day.subtract(night)
+            
+        if is_monthly:
+            adjusted_start, adjusted_end = adjust_monthly_dates(start_date, end_date)
+        else:
+            adjusted_start, adjusted_end = start_date, end_date
+            
+        img_col = ee.ImageCollection(asset_id).filterDate(adjusted_start, adjusted_end)
+        img = img_col.select(target_band)
+        
+        if target_reducer == "sum":
+            img = img.sum()
+        elif target_reducer == "min":
+            img = img.min()
+        elif target_reducer == "max":
+            img = img.max()
+        elif target_reducer == "median":
+            img = img.median()
+        else:
+            img = img.mean()
+            
+        if target_multiplier != 1.0:
+            img = img.multiply(target_multiplier)
+        if target_offset != 0.0:
+            img = img.add(target_offset)
+            
+        return img
+        
+    else:
+        asset_id = dataset
+        is_image = False
+        try:
+            temp_img = ee.Image(asset_id)
+            temp_img.bandNames().getInfo()
+            is_image = True
+        except Exception:
+            is_image = False
+            
+        if is_image:
+            img = ee.Image(asset_id)
+            if band:
+                img = img.select(band)
+        else:
+            is_monthly = "monthly" in asset_id.lower()
+            if is_monthly:
+                adjusted_start, adjusted_end = adjust_monthly_dates(start_date, end_date)
+            else:
+                adjusted_start, adjusted_end = start_date, end_date
+                
+            img_col = ee.ImageCollection(asset_id).filterDate(adjusted_start, adjusted_end)
+            if band:
+                img_col = img_col.select(band)
+                
+            if reducer == "sum":
+                img = img_col.sum()
+            elif reducer == "min":
+                img = img_col.min()
+            elif reducer == "max":
+                img = img_col.max()
+            elif reducer == "median":
+                img = img_col.median()
+            else:
+                img = img_col.mean()
+                
+        if multiplier is not None and multiplier != 1.0:
+            img = img.multiply(multiplier)
+        if offset is not None and offset != 0.0:
+            img = img.add(offset)
+            
+        return img
+
 class ExportRequest(BaseModel):
     dataset: str
     roi_type: str = "country"
@@ -58,10 +248,61 @@ class ExportRequest(BaseModel):
     start_date: str
     end_date: str
     scale: int
+    band: Optional[str] = None
+    reducer: str = "mean"
+    multiplier: float = 1.0
+    offset: float = 0.0
 
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+@app.get("/datasets/info")
+def get_dataset_info(id: str):
+    """
+    Given a GEE Asset ID, queries whether it is an Image or ImageCollection,
+    and returns its available bands.
+    """
+    if not id:
+        raise HTTPException(status_code=400, detail="Missing asset 'id' parameter.")
+    
+    preset_key = id.lower()
+    if preset_key in PRESETS:
+        asset_id = PRESETS[preset_key]["asset"]
+    else:
+        asset_id = id
+
+    try:
+        # 1. Try as Image
+        img = ee.Image(asset_id)
+        bands = img.bandNames().getInfo()
+        return {
+            "type": "Image",
+            "bands": bands,
+            "asset_id": asset_id
+        }
+    except Exception as e_img:
+        # 2. Try as ImageCollection
+        try:
+            col = ee.ImageCollection(asset_id)
+            first_img = col.first()
+            if first_img is None:
+                raise HTTPException(status_code=404, detail=f"Asset '{asset_id}' is an empty ImageCollection.")
+            bands = first_img.bandNames().getInfo()
+            if preset_key == "modis_lst_range":
+                if "range" not in bands:
+                    bands.append("range")
+            return {
+                "type": "ImageCollection",
+                "bands": bands,
+                "asset_id": asset_id
+            }
+        except Exception as e_col:
+            err_msg = str(e_img) if "not found" in str(e_img) else str(e_col)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to load GEE asset '{asset_id}'. Error: {err_msg}"
+            )
 
 @app.post("/exports")
 def create_export(req: ExportRequest):
@@ -71,12 +312,13 @@ def create_export(req: ExportRequest):
     POST /exports with a JSON body matching the ExportRequest schema.
     """
     # Validate the dataset
-    valid_datasets = ["chirps", "era5", "era5_land_monthly", "modis_lst_day", "modis_lst_night", "modis_lst_range", "modis_ndvi", "srtm"]
-    if req.dataset not in valid_datasets:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Unsupported dataset. Must be one of: {', '.join(valid_datasets)}"
-        )
+    preset_key = req.dataset.lower()
+    if preset_key not in PRESETS:
+        if not ("/" in req.dataset or req.dataset.startswith("projects/") or req.dataset.startswith("users/")):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported dataset or invalid GEE Asset ID: '{req.dataset}'"
+            )
 
     # Fetch ROI feature and check if it exists
     try:
@@ -105,45 +347,15 @@ def create_export(req: ExportRequest):
         roiMask = ee.Image.constant(1).clip(roi).selfMask()
 
         # Recreate the selected image based on the dataset
-        if req.dataset == "chirps":
-            img_col = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY") \
-                .filterDate(req.start_date, req.end_date) \
-                .select("precipitation")
-            img = img_col.mean()
-        
-        elif req.dataset == "era5":
-            img_col = ee.ImageCollection("ECMWF/ERA5/DAILY") \
-                .filterDate(req.start_date, req.end_date) \
-                .select("mean_2m_air_temperature")
-            img = img_col.mean().subtract(273.15) # Kelvin to Celsius
-        
-        elif req.dataset == "era5_land_monthly":
-            adjusted_start, adjusted_end = adjust_monthly_dates(req.start_date, req.end_date)
-            img_col = ee.ImageCollection("ECMWF/ERA5_LAND/MONTHLY_AGGR") \
-                .filterDate(adjusted_start, adjusted_end) \
-                .select("temperature_2m")
-            img = img_col.mean().subtract(273.15) # Kelvin to Celsius
-        
-        elif req.dataset in ["modis_lst_day", "modis_lst_night", "modis_lst_range"]:
-            adjusted_start, adjusted_end = adjust_monthly_dates(req.start_date, req.end_date)
-            img_col = ee.ImageCollection("MODIS/061/MOD21C3").filterDate(adjusted_start, adjusted_end)
-            if req.dataset == "modis_lst_day":
-                img = img_col.select("LST_Day").mean().subtract(273.15)
-            elif req.dataset == "modis_lst_night":
-                img = img_col.select("LST_Night").mean().subtract(273.15)
-            else: # range
-                day = img_col.select("LST_Day").mean().subtract(273.15)
-                night = img_col.select("LST_Night").mean().subtract(273.15)
-                img = day.subtract(night)
-        
-        elif req.dataset == "modis_ndvi":
-            img_col = ee.ImageCollection("MODIS/061/MOD13Q1") \
-                .filterDate(req.start_date, req.end_date) \
-                .select("NDVI")
-            img = img_col.mean().multiply(0.0001)
-        
-        elif req.dataset == "srtm":
-            img = ee.Image("USGS/SRTMGL1_003").select("elevation")
+        img = process_gee_image(
+            dataset=req.dataset,
+            start_date=req.start_date,
+            end_date=req.end_date,
+            band=req.band,
+            reducer=req.reducer,
+            multiplier=req.multiplier,
+            offset=req.offset
+        )
 
         # Apply ROI masking logic
         img = img.updateMask(roiMask).clip(roi).rename("value")
@@ -290,63 +502,66 @@ def get_export_download_url(task_id: str):
         raise HTTPException(status_code=500, detail=f"Error generating download URL: {str(e)}")
 
 @app.get("/map")
-def get_map_tiles(dataset: str, start_date: str, end_date: str, roi_type: str = "country", roi_names: Optional[str] = None):
+def get_map_tiles(
+    dataset: str,
+    start_date: str,
+    end_date: str,
+    roi_type: str = "country",
+    roi_names: Optional[str] = None,
+    band: Optional[str] = None,
+    reducer: str = "mean",
+    multiplier: float = 1.0,
+    offset: float = 0.0,
+    vis_min: Optional[float] = None,
+    vis_max: Optional[float] = None,
+    palette: Optional[str] = None
+):
     """
     Returns the tile URL format for a given dataset and date range to be displayed on a Leaflet map.
     If roi_names is provided (comma-separated), clips the visualization to those regions/countries and returns their bounding box.
     """
-    valid_datasets = ["chirps", "era5", "era5_land_monthly", "modis_lst_day", "modis_lst_night", "modis_lst_range", "modis_ndvi", "srtm"]
-    if dataset not in valid_datasets:
-        raise HTTPException(status_code=400, detail=f"Unsupported dataset: {dataset}")
+    preset_key = dataset.lower()
+    if preset_key not in PRESETS:
+        if not ("/" in dataset or dataset.startswith("projects/") or dataset.startswith("users/")):
+            raise HTTPException(status_code=400, detail=f"Unsupported dataset or invalid GEE Asset ID: {dataset}")
 
     try:
-        if dataset == "chirps":
-            img_col = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY") \
-                .filterDate(start_date, end_date) \
-                .select("precipitation")
-            img = img_col.mean()
-            vis_params = {"min": 0, "max": 50, "palette": ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494']}
+        img = process_gee_image(
+            dataset=dataset,
+            start_date=start_date,
+            end_date=end_date,
+            band=band,
+            reducer=reducer,
+            multiplier=multiplier,
+            offset=offset
+        )
+
+        if preset_key in PRESETS:
+            preset = PRESETS[preset_key]
+            vis_params = {
+                "min": preset["vis_min"],
+                "max": preset["vis_max"],
+                "palette": preset["palette"]
+            }
+        else:
+            v_min = vis_min if vis_min is not None else 0.0
+            v_max = vis_max if vis_max is not None else 1.0
             
-        elif dataset == "era5":
-            img_col = ee.ImageCollection("ECMWF/ERA5/DAILY") \
-                .filterDate(start_date, end_date) \
-                .select("mean_2m_air_temperature")
-            img = img_col.mean().subtract(273.15) # Kelvin to Celsius
-            vis_params = {"min": 0, "max": 40, "palette": ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026']}
-            
-        elif dataset == "era5_land_monthly":
-            adjusted_start, adjusted_end = adjust_monthly_dates(start_date, end_date)
-            img_col = ee.ImageCollection("ECMWF/ERA5_LAND/MONTHLY_AGGR") \
-                .filterDate(adjusted_start, adjusted_end) \
-                .select("temperature_2m")
-            img = img_col.mean().subtract(273.15) # Kelvin to Celsius
-            vis_params = {"min": 0, "max": 40, "palette": ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026']}
-            
-        elif dataset in ["modis_lst_day", "modis_lst_night", "modis_lst_range"]:
-            adjusted_start, adjusted_end = adjust_monthly_dates(start_date, end_date)
-            img_col = ee.ImageCollection("MODIS/061/MOD21C3").filterDate(adjusted_start, adjusted_end)
-            if dataset == "modis_lst_day":
-                img = img_col.select("LST_Day").mean().subtract(273.15)
-                vis_params = {"min": 0, "max": 40, "palette": ['#313695', '#4575b4', '#74add1', '#ffffbf', '#fee090', '#f46d43', '#a50026']}
-            elif dataset == "modis_lst_night":
-                img = img_col.select("LST_Night").mean().subtract(273.15)
-                vis_params = {"min": -10, "max": 25, "palette": ['#053061', '#2166ac', '#4393c3', '#f7f7f7', '#fddbc7', '#d6604f', '#b2182b']}
-            else: # range
-                day = img_col.select("LST_Day").mean().subtract(273.15)
-                night = img_col.select("LST_Night").mean().subtract(273.15)
-                img = day.subtract(night)
-                vis_params = {"min": 5, "max": 25, "palette": ['#ffffd9', '#edf8b1', '#7fcdbb', '#41b6c4', '#1d91c0', '#225ea8', '#081d58']}
-            
-        elif dataset == "modis_ndvi":
-            img_col = ee.ImageCollection("MODIS/061/MOD13Q1") \
-                .filterDate(start_date, end_date) \
-                .select("NDVI")
-            img = img_col.mean().multiply(0.0001)
-            vis_params = {"min": 0.0, "max": 1.0, "palette": ['#FFFFFF', '#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400', '#3E8601', '#207401', '#056201', '#004C00', '#023B01', '#012E01', '#011D01', '#011301']}
-            
-        elif dataset == "srtm":
-            img = ee.Image("USGS/SRTMGL1_003").select("elevation")
-            vis_params = {"min": 0, "max": 3000, "palette": ['#000000', '#478FCD', '#86C58E', '#AFC35E', '#8F7131', '#B78D4C', '#E2B8A6', '#FFFFFF']}
+            palette_list = ['#440154', '#414487', '#2a788e', '#22a884', '#7ad151', '#fde725'] # Default viridis
+            if palette == "coolwarm":
+                palette_list = ['#313695', '#4575b4', '#74add1', '#ffffbf', '#fee090', '#f46d43', '#a50026']
+            elif palette == "grayscale":
+                palette_list = ['#000000', '#ffffff']
+            elif palette == "terrain":
+                palette_list = ['#000000', '#478FCD', '#86C58E', '#AFC35E', '#8F7131', '#B78D4C', '#E2B8A6', '#FFFFFF']
+            elif palette == "ndvi":
+                palette_list = ['#FFFFFF', '#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400', '#3E8601', '#207401', '#056201', '#004C00', '#023B01', '#012E01', '#011D01', '#011301']
+                
+            vis_params = {
+                "min": v_min,
+                "max": v_max,
+                "palette": palette_list
+            }
 
         bounds = None
         if roi_names:

@@ -64,6 +64,14 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   function updateDatasetUI(datasetVal, infoBox, startDateInput, endDateInput, dateRow) {
+    if (datasetVal === "custom") {
+      if (infoBox) {
+        infoBox.textContent = "Custom Google Earth Engine Dataset (enter Asset ID below)";
+      }
+      if (dateRow) dateRow.style.display = "flex";
+      return;
+    }
+
     const meta = datasetMetadata[datasetVal];
     if (!meta) return;
 
@@ -117,9 +125,81 @@ document.addEventListener("DOMContentLoaded", () => {
     const exportDateRow = document.getElementById("export_date_row");
     const exportDatasetInfoBox = document.getElementById("exportDatasetInfoBox");
 
+    const exportCustomPanel = document.getElementById("export_custom_panel");
+    const exportCustomAssetInput = document.getElementById("export_custom_asset");
+    const exportCustomLoadBtn = document.getElementById("export_custom_load_btn");
+    const exportCustomError = document.getElementById("export_custom_error");
+    const exportCustomBandSelect = document.getElementById("export_custom_band");
+    const exportCustomBandGroup = document.getElementById("export_custom_band_group");
+    const exportCustomReducerGroup = document.getElementById("export_custom_reducer_group");
+    const exportCustomScalingRow = document.getElementById("export_custom_scaling_row");
+
+    let loadedExportAssetType = "ImageCollection";
+
+    if (exportCustomLoadBtn) {
+      exportCustomLoadBtn.addEventListener("click", async () => {
+        const assetId = exportCustomAssetInput.value.trim();
+        if (!assetId) {
+          showExportError("Please enter a GEE Asset ID");
+          return;
+        }
+
+        exportCustomLoadBtn.disabled = true;
+        exportCustomLoadBtn.textContent = "Loading...";
+        exportCustomError.style.display = "none";
+
+        try {
+          const res = await fetch(`${BACKEND_URL}/datasets/info?id=${encodeURIComponent(assetId)}`);
+          const data = await res.json();
+
+          if (!res.ok) {
+            throw new Error(data.detail || "Failed to load GEE asset metadata");
+          }
+
+          exportCustomBandSelect.innerHTML = "";
+          data.bands.forEach(band => {
+            const opt = document.createElement("option");
+            opt.value = band;
+            opt.textContent = band;
+            exportCustomBandSelect.appendChild(opt);
+          });
+
+          loadedExportAssetType = data.type;
+          if (data.type === "Image") {
+            if (exportDateRow) exportDateRow.style.display = "none";
+            if (exportCustomReducerGroup) exportCustomReducerGroup.style.display = "none";
+          } else {
+            if (exportDateRow) exportDateRow.style.display = "flex";
+            if (exportCustomReducerGroup) exportCustomReducerGroup.style.display = "flex";
+          }
+
+          if (exportCustomBandGroup) exportCustomBandGroup.style.display = "flex";
+          if (exportCustomScalingRow) exportCustomScalingRow.style.display = "flex";
+          
+        } catch (err) {
+          showExportError(err.message);
+        } finally {
+          exportCustomLoadBtn.disabled = false;
+          exportCustomLoadBtn.textContent = "Load";
+        }
+      });
+    }
+
+    function showExportError(msg) {
+      if (exportCustomError) {
+        exportCustomError.textContent = msg;
+        exportCustomError.style.display = "block";
+      }
+    }
+
     if (exportDatasetSelect) {
       exportDatasetSelect.addEventListener("change", () => {
         updateDatasetUI(exportDatasetSelect.value, exportDatasetInfoBox, exportStartDateInput, exportEndDateInput, exportDateRow);
+        if (exportDatasetSelect.value === "custom") {
+          if (exportCustomPanel) exportCustomPanel.style.display = "flex";
+        } else {
+          if (exportCustomPanel) exportCustomPanel.style.display = "none";
+        }
       });
       // Trigger initial load
       exportDatasetSelect.dispatchEvent(new Event('change'));
@@ -148,14 +228,24 @@ document.addEventListener("DOMContentLoaded", () => {
       statusDot.style.backgroundColor = "#d2a8ff"; // Purple
 
       const formData = new FormData(exportForm);
+      const datasetVal = formData.get("dataset");
+      const isCustom = datasetVal === "custom";
+
       const payload = {
-        dataset: formData.get("dataset"),
+        dataset: isCustom ? exportCustomAssetInput.value.trim() : datasetVal,
         roi_type: "country",
         roi_names: [formData.get("country")],
-        start_date: formData.get("start_date"),
-        end_date: formData.get("end_date"),
+        start_date: isCustom && loadedExportAssetType === "Image" ? "2000-01-01" : formData.get("start_date"),
+        end_date: isCustom && loadedExportAssetType === "Image" ? "2000-01-02" : formData.get("end_date"),
         scale: parseInt(formData.get("scale"), 10)
       };
+
+      if (isCustom) {
+        payload.band = exportCustomBandSelect.value;
+        payload.reducer = document.getElementById("export_custom_reducer").value;
+        payload.multiplier = parseFloat(document.getElementById("export_custom_multiplier").value) || 1.0;
+        payload.offset = parseFloat(document.getElementById("export_custom_offset").value) || 0.0;
+      }
 
       try {
         const response = await fetch(`${BACKEND_URL}/exports`, {
@@ -275,9 +365,88 @@ document.addEventListener("DOMContentLoaded", () => {
     const mapLoadingOverlay = document.getElementById("mapLoadingOverlay");
     const mapDateRow = document.getElementById("map_date_row");
 
+    const mapCustomPanel = document.getElementById("map_custom_panel");
+    const mapCustomAssetInput = document.getElementById("map_custom_asset");
+    const mapCustomLoadBtn = document.getElementById("map_custom_load_btn");
+    const mapCustomError = document.getElementById("map_custom_error");
+    const mapCustomBandSelect = document.getElementById("map_custom_band");
+    const mapCustomBandGroup = document.getElementById("map_custom_band_group");
+    const mapCustomReducerGroup = document.getElementById("map_custom_reducer_group");
+    const mapCustomScalingRow = document.getElementById("map_custom_scaling_row");
+    const mapCustomVisRow = document.getElementById("map_custom_vis_row");
+    const mapCustomPaletteGroup = document.getElementById("map_custom_palette_group");
+
+    let loadedMapAssetType = "ImageCollection";
+
+    if (mapCustomLoadBtn) {
+      mapCustomLoadBtn.addEventListener("click", async () => {
+        const assetId = mapCustomAssetInput.value.trim();
+        if (!assetId) {
+          showMapError("Please enter a GEE Asset ID");
+          return;
+        }
+
+        mapCustomLoadBtn.disabled = true;
+        mapCustomLoadBtn.textContent = "Loading...";
+        mapCustomError.style.display = "none";
+
+        try {
+          const res = await fetch(`${BACKEND_URL}/datasets/info?id=${encodeURIComponent(assetId)}`);
+          const data = await res.json();
+
+          if (!res.ok) {
+            throw new Error(data.detail || "Failed to load GEE asset metadata");
+          }
+
+          mapCustomBandSelect.innerHTML = "";
+          data.bands.forEach(band => {
+            const opt = document.createElement("option");
+            opt.value = band;
+            opt.textContent = band;
+            mapCustomBandSelect.appendChild(opt);
+          });
+
+          loadedMapAssetType = data.type;
+          if (data.type === "Image") {
+            if (mapDateRow) mapDateRow.style.display = "none";
+            if (mapCustomReducerGroup) mapCustomReducerGroup.style.display = "none";
+          } else {
+            if (mapDateRow) mapDateRow.style.display = "flex";
+            if (mapCustomReducerGroup) mapCustomReducerGroup.style.display = "flex";
+          }
+
+          if (mapCustomBandGroup) mapCustomBandGroup.style.display = "flex";
+          if (mapCustomScalingRow) mapCustomScalingRow.style.display = "flex";
+          if (mapCustomVisRow) mapCustomVisRow.style.display = "flex";
+          if (mapCustomPaletteGroup) mapCustomPaletteGroup.style.display = "flex";
+          
+          triggerMapUpdate();
+          
+        } catch (err) {
+          showMapError(err.message);
+        } finally {
+          mapCustomLoadBtn.disabled = false;
+          mapCustomLoadBtn.textContent = "Load";
+        }
+      });
+    }
+
+    function showMapError(msg) {
+      if (mapCustomError) {
+        mapCustomError.textContent = msg;
+        mapCustomError.style.display = "block";
+      }
+    }
+
     if (datasetSelect) {
       datasetSelect.addEventListener("change", () => {
         updateDatasetUI(datasetSelect.value, datasetInfoBox, startDateInput, endDateInput, mapDateRow);
+        
+        if (datasetSelect.value === "custom") {
+          if (mapCustomPanel) mapCustomPanel.style.display = "flex";
+        } else {
+          if (mapCustomPanel) mapCustomPanel.style.display = "none";
+        }
         
         // Map scale update logic
         const meta = datasetMetadata[datasetSelect.value];
@@ -288,6 +457,14 @@ document.addEventListener("DOMContentLoaded", () => {
             const nativeOption = mapScaleSelect.querySelector('option[value="native"]');
             if (nativeOption) {
               nativeOption.textContent = `${meta.res.toLocaleString()}m (Native)`;
+            }
+          }
+        } else if (datasetSelect.value === "custom" && mapScaleCustom) {
+          mapScaleCustom.value = 5000;
+          if (mapScaleSelect) {
+            const nativeOption = mapScaleSelect.querySelector('option[value="native"]');
+            if (nativeOption) {
+              nativeOption.textContent = "5,000m (Default Custom)";
             }
           }
         }
@@ -369,8 +546,15 @@ document.addEventListener("DOMContentLoaded", () => {
     // Reactive Map Update Logic
     async function triggerMapUpdate() {
       const dataset = datasetSelect.value;
-      const startDate = startDateInput.value;
-      const endDate = endDateInput.value;
+      const isCustom = dataset === "custom";
+      const customAsset = mapCustomAssetInput.value.trim();
+
+      if (isCustom && (!customAsset || !mapCustomBandSelect.value)) {
+        return; // Don't trigger map update until custom ID loaded
+      }
+
+      const startDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-01" : startDateInput.value;
+      const endDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-02" : endDateInput.value;
       
       const roiType = document.querySelector('input[name="roi_type"]:checked').value;
       
@@ -381,7 +565,7 @@ document.addEventListener("DOMContentLoaded", () => {
         regionInput.required = selectedROIs.size === 0;
       }
 
-      if (!dataset || !startDate || !endDate || selectedROIs.size === 0) {
+      if (!dataset || (!isCustom && (!startDate || !endDate)) || selectedROIs.size === 0) {
         if (currentEELayer) {
           map.removeLayer(currentEELayer);
           currentEELayer = null;
@@ -394,7 +578,21 @@ document.addEventListener("DOMContentLoaded", () => {
       if (mapLoadingOverlay) mapLoadingOverlay.style.display = "flex";
 
       try {
-        const response = await fetch(`${BACKEND_URL}/map?dataset=${dataset}&start_date=${startDate}&end_date=${endDate}&roi_type=${roiType}&roi_names=${encodeURIComponent(roiNames)}`);
+        let queryUrl = `${BACKEND_URL}/map?dataset=${encodeURIComponent(isCustom ? customAsset : dataset)}&start_date=${startDate}&end_date=${endDate}&roi_type=${roiType}&roi_names=${encodeURIComponent(roiNames)}`;
+        
+        if (isCustom) {
+          const band = mapCustomBandSelect.value;
+          const reducer = document.getElementById("map_custom_reducer").value;
+          const multiplier = parseFloat(document.getElementById("map_custom_multiplier").value) || 1.0;
+          const offset = parseFloat(document.getElementById("map_custom_offset").value) || 0.0;
+          const vis_min = parseFloat(document.getElementById("map_custom_vis_min").value) || 0.0;
+          const vis_max = parseFloat(document.getElementById("map_custom_vis_max").value) || 100.0;
+          const palette = document.getElementById("map_custom_palette").value;
+          
+          queryUrl += `&band=${encodeURIComponent(band)}&reducer=${encodeURIComponent(reducer)}&multiplier=${multiplier}&offset=${offset}&vis_min=${vis_min}&vis_max=${vis_max}&palette=${encodeURIComponent(palette)}`;
+        }
+
+        const response = await fetch(queryUrl);
         const data = await response.json();
 
         if (!response.ok) throw new Error(data.detail || "Failed to load map tiles");
@@ -421,7 +619,15 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    [datasetSelect, startDateInput, endDateInput].forEach(el => {
+    [datasetSelect, startDateInput, endDateInput,
+     mapCustomBandSelect,
+     document.getElementById("map_custom_reducer"),
+     document.getElementById("map_custom_multiplier"),
+     document.getElementById("map_custom_offset"),
+     document.getElementById("map_custom_vis_min"),
+     document.getElementById("map_custom_vis_max"),
+     document.getElementById("map_custom_palette")
+    ].forEach(el => {
       if (el) el.addEventListener("change", triggerMapUpdate);
     });
 
@@ -498,8 +704,11 @@ document.addEventListener("DOMContentLoaded", () => {
         mapStatusDot.style.backgroundColor = "#d2a8ff";
 
         const formData = new FormData(mapForm);
-        const startDate = formData.get("start_date");
-        const endDate = formData.get("end_date");
+        const datasetVal = formData.get("dataset");
+        const isCustom = datasetVal === "custom";
+
+        const startDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-01" : formData.get("start_date");
+        const endDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-02" : formData.get("end_date");
         const scale = parseInt(formData.get("scale"), 10);
 
         mapEstimatedText = estimateExportTime(startDate, endDate, scale);
@@ -512,13 +721,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const roiType = document.querySelector('input[name="roi_type"]:checked').value;
         const payload = {
-          dataset: formData.get("dataset"),
+          dataset: isCustom ? mapCustomAssetInput.value.trim() : datasetVal,
           roi_type: roiType,
           roi_names: Array.from(selectedROIs),
-          start_date: formData.get("start_date"),
-          end_date: formData.get("end_date"),
-          scale: parseInt(formData.get("scale"), 10)
+          start_date: startDate,
+          end_date: endDate,
+          scale: scale
         };
+
+        if (isCustom) {
+          payload.band = mapCustomBandSelect.value;
+          payload.reducer = document.getElementById("map_custom_reducer").value;
+          payload.multiplier = parseFloat(document.getElementById("map_custom_multiplier").value) || 1.0;
+          payload.offset = parseFloat(document.getElementById("map_custom_offset").value) || 0.0;
+        }
 
         try {
           const response = await fetch(`${BACKEND_URL}/exports`, {

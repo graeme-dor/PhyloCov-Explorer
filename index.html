@@ -88,8 +88,70 @@
                   <option value="modis_lst_night">MODIS Monthly LST Night (5.6km)</option>
                   <option value="modis_lst_range">MODIS Monthly LST Day-Night Range (5.6km)</option>
                   <option value="srtm">SRTM Elevation (30m)</option>
+                  <option value="custom">Custom GEE Asset...</option>
                 </select>
                 <div id="datasetInfoBox" style="font-size: 0.8rem; color: #8b949e; margin-top: 0.35rem; font-family: monospace;">Native Resolution: ~5.5km | Temporal: Daily</div>
+                
+                <!-- Custom GEE Asset Panel -->
+                <div id="map_custom_panel" style="display: none; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1rem; margin-top: 0.75rem; flex-direction: column; gap: 0.75rem;">
+                  <div class="form-group">
+                    <label for="map_custom_asset" style="font-size: 0.85rem; font-weight: 600;">GEE Asset ID</label>
+                    <div style="display: flex; gap: 0.5rem; width: 100%;">
+                      <input type="text" id="map_custom_asset" placeholder="e.g. NASA/ORNL/DAYMET_V4" style="flex-grow: 1; padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                      <button type="button" id="map_custom_load_btn" class="btn-secondary" style="padding: 0.5rem 0.75rem; font-size: 0.9rem; margin-top: 0;">Load</button>
+                    </div>
+                    <div id="map_custom_error" style="color: #f85149; font-size: 0.8rem; display: none; margin-top: 0.25rem;"></div>
+                  </div>
+                  
+                  <div class="form-group" id="map_custom_band_group" style="display: none;">
+                    <label for="map_custom_band" style="font-size: 0.85rem; font-weight: 600;">Band</label>
+                    <select id="map_custom_band" name="band" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;"></select>
+                  </div>
+                  
+                  <div class="form-group" id="map_custom_reducer_group" style="display: none;">
+                    <label for="map_custom_reducer" style="font-size: 0.85rem; font-weight: 600;">Temporal Reducer</label>
+                    <select id="map_custom_reducer" name="reducer" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                      <option value="mean">Mean (Average)</option>
+                      <option value="sum">Sum (Total)</option>
+                      <option value="min">Min (Minimum)</option>
+                      <option value="max">Max (Maximum)</option>
+                      <option value="median">Median</option>
+                    </select>
+                  </div>
+                  
+                  <div class="form-row" id="map_custom_scaling_row" style="display: none; gap: 0.75rem;">
+                    <div class="form-group">
+                      <label for="map_custom_multiplier" style="font-size: 0.85rem; font-weight: 600;">Multiplier</label>
+                      <input type="number" id="map_custom_multiplier" name="multiplier" value="1.0" step="any" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                    </div>
+                    <div class="form-group">
+                      <label for="map_custom_offset" style="font-size: 0.85rem; font-weight: 600;">Offset</label>
+                      <input type="number" id="map_custom_offset" name="offset" value="0.0" step="any" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                    </div>
+                  </div>
+
+                  <div class="form-row" id="map_custom_vis_row" style="display: none; gap: 0.75rem;">
+                    <div class="form-group">
+                      <label for="map_custom_vis_min" style="font-size: 0.85rem; font-weight: 600;">Vis Min</label>
+                      <input type="number" id="map_custom_vis_min" name="vis_min" value="0.0" step="any" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                    </div>
+                    <div class="form-group">
+                      <label for="map_custom_vis_max" style="font-size: 0.85rem; font-weight: 600;">Vis Max</label>
+                      <input type="number" id="map_custom_vis_max" name="vis_max" value="100.0" step="any" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                    </div>
+                  </div>
+
+                  <div class="form-group" id="map_custom_palette_group" style="display: none;">
+                    <label for="map_custom_palette" style="font-size: 0.85rem; font-weight: 600;">Color Palette</label>
+                    <select id="map_custom_palette" name="palette" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                      <option value="viridis">Viridis (Sequential Purple-Green-Yellow)</option>
+                      <option value="coolwarm">Coolwarm (Diverging Blue-Red)</option>
+                      <option value="grayscale">Grayscale (Black-White)</option>
+                      <option value="terrain">Terrain (Elevation Colors)</option>
+                      <option value="ndvi">NDVI (Brown-Green)</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
               <div class="form-row" id="map_date_row">
