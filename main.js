@@ -132,9 +132,59 @@ document.addEventListener("DOMContentLoaded", () => {
     const exportCustomBandSelect = document.getElementById("export_custom_band");
     const exportCustomBandGroup = document.getElementById("export_custom_band_group");
     const exportCustomReducerGroup = document.getElementById("export_custom_reducer_group");
+    const exportCustomScalePresetGroup = document.getElementById("export_custom_scale_preset_group");
     const exportCustomScalingRow = document.getElementById("export_custom_scaling_row");
+    const exportCustomMultiplier = document.getElementById("export_custom_multiplier");
+    const exportCustomOffset = document.getElementById("export_custom_offset");
+    const exportCustomScalePreset = document.getElementById("export_custom_scale_preset");
 
     let loadedExportAssetType = "ImageCollection";
+    let exportBandsMetadata = [];
+
+    if (exportCustomScalePreset) {
+      exportCustomScalePreset.addEventListener("change", () => {
+        const val = exportCustomScalePreset.value;
+        if (val === "none") {
+          exportCustomMultiplier.value = 1.0;
+          exportCustomOffset.value = 0.0;
+          exportCustomScalingRow.style.display = "none";
+        } else if (val === "kelvin_to_celsius") {
+          exportCustomMultiplier.value = 1.0;
+          exportCustomOffset.value = -273.15;
+          exportCustomScalingRow.style.display = "none";
+        } else if (val === "modis_ndvi") {
+          exportCustomMultiplier.value = 0.0001;
+          exportCustomOffset.value = 0.0;
+          exportCustomScalingRow.style.display = "none";
+        } else if (val === "percentage") {
+          exportCustomMultiplier.value = 100.0;
+          exportCustomOffset.value = 0.0;
+          exportCustomScalingRow.style.display = "none";
+        } else if (val === "custom") {
+          exportCustomScalingRow.style.display = "flex";
+        }
+      });
+    }
+
+    if (exportCustomBandSelect) {
+      exportCustomBandSelect.addEventListener("change", () => {
+        const bandId = exportCustomBandSelect.value;
+        const band = exportBandsMetadata.find(b => b.id === bandId);
+        if (!band) return;
+
+        // Auto-configure unit scaling preset
+        if (band.units === "K" || band.id.toLowerCase().includes("temp")) {
+          exportCustomScalePreset.value = "kelvin_to_celsius";
+        } else if (band.scale !== 1.0 || band.offset !== 0.0) {
+          exportCustomScalePreset.value = "custom";
+          exportCustomMultiplier.value = band.scale;
+          exportCustomOffset.value = band.offset;
+        } else {
+          exportCustomScalePreset.value = "none";
+        }
+        exportCustomScalePreset.dispatchEvent(new Event("change"));
+      });
+    }
 
     if (exportCustomLoadBtn) {
       exportCustomLoadBtn.addEventListener("click", async () => {
@@ -156,11 +206,19 @@ document.addEventListener("DOMContentLoaded", () => {
             throw new Error(data.detail || "Failed to load GEE asset metadata");
           }
 
+          exportBandsMetadata = data.bands;
           exportCustomBandSelect.innerHTML = "";
-          data.bands.forEach(band => {
+          exportBandsMetadata.forEach(band => {
             const opt = document.createElement("option");
-            opt.value = band;
-            opt.textContent = band;
+            opt.value = band.id;
+            let label = band.id;
+            if (band.description) {
+              label += ` - ${band.description}`;
+            }
+            if (band.units) {
+              label += ` (${band.units})`;
+            }
+            opt.textContent = label;
             exportCustomBandSelect.appendChild(opt);
           });
 
@@ -174,7 +232,10 @@ document.addEventListener("DOMContentLoaded", () => {
           }
 
           if (exportCustomBandGroup) exportCustomBandGroup.style.display = "flex";
-          if (exportCustomScalingRow) exportCustomScalingRow.style.display = "flex";
+          if (exportCustomScalePresetGroup) exportCustomScalePresetGroup.style.display = "flex";
+          
+          // Trigger initial band change to set default scaling presets
+          exportCustomBandSelect.dispatchEvent(new Event("change"));
           
         } catch (err) {
           showExportError(err.message);
@@ -363,7 +424,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const mapScaleSelect = document.getElementById("map_scale_select");
     const mapScaleCustom = document.getElementById("map_scale_custom");
     const mapLoadingOverlay = document.getElementById("mapLoadingOverlay");
+    const mapErrorOverlay = document.getElementById("mapErrorOverlay");
+    const mapErrorText = document.getElementById("mapErrorText");
+    const mapErrorCloseBtn = document.getElementById("mapErrorCloseBtn");
     const mapDateRow = document.getElementById("map_date_row");
+
+    if (mapErrorCloseBtn) {
+      mapErrorCloseBtn.addEventListener("click", () => {
+        if (mapErrorOverlay) mapErrorOverlay.style.display = "none";
+      });
+    }
 
     const mapCustomPanel = document.getElementById("map_custom_panel");
     const mapCustomAssetInput = document.getElementById("map_custom_asset");
@@ -372,11 +442,105 @@ document.addEventListener("DOMContentLoaded", () => {
     const mapCustomBandSelect = document.getElementById("map_custom_band");
     const mapCustomBandGroup = document.getElementById("map_custom_band_group");
     const mapCustomReducerGroup = document.getElementById("map_custom_reducer_group");
+    const mapCustomScalePresetGroup = document.getElementById("map_custom_scale_preset_group");
     const mapCustomScalingRow = document.getElementById("map_custom_scaling_row");
     const mapCustomVisRow = document.getElementById("map_custom_vis_row");
     const mapCustomPaletteGroup = document.getElementById("map_custom_palette_group");
+    const mapCustomScalePreset = document.getElementById("map_custom_scale_preset");
+    const mapCustomMultiplier = document.getElementById("map_custom_multiplier");
+    const mapCustomOffset = document.getElementById("map_custom_offset");
+    const mapCustomVisMin = document.getElementById("map_custom_vis_min");
+    const mapCustomVisMax = document.getElementById("map_custom_vis_max");
+    const mapCustomPalette = document.getElementById("map_custom_palette");
 
     let loadedMapAssetType = "ImageCollection";
+    let mapBandsMetadata = [];
+
+    if (mapCustomScalePreset) {
+      mapCustomScalePreset.addEventListener("change", () => {
+        const val = mapCustomScalePreset.value;
+        if (val === "none") {
+          mapCustomMultiplier.value = 1.0;
+          mapCustomOffset.value = 0.0;
+          mapCustomScalingRow.style.display = "none";
+        } else if (val === "kelvin_to_celsius") {
+          mapCustomMultiplier.value = 1.0;
+          mapCustomOffset.value = -273.15;
+          mapCustomScalingRow.style.display = "none";
+        } else if (val === "modis_ndvi") {
+          mapCustomMultiplier.value = 0.0001;
+          mapCustomOffset.value = 0.0;
+          mapCustomScalingRow.style.display = "none";
+        } else if (val === "percentage") {
+          mapCustomMultiplier.value = 100.0;
+          mapCustomOffset.value = 0.0;
+          mapCustomScalingRow.style.display = "none";
+        } else if (val === "custom") {
+          mapCustomScalingRow.style.display = "flex";
+        }
+        triggerMapUpdate();
+      });
+    }
+
+    if (mapCustomBandSelect) {
+      mapCustomBandSelect.addEventListener("change", () => {
+        const bandId = mapCustomBandSelect.value;
+        const band = mapBandsMetadata.find(b => b.id === bandId);
+        if (!band) return;
+
+        // 1. Auto-configure unit scaling preset
+        if (band.units === "K" || band.id.toLowerCase().includes("temp")) {
+          mapCustomScalePreset.value = "kelvin_to_celsius";
+        } else if (band.scale !== 1.0 || band.offset !== 0.0) {
+          mapCustomScalePreset.value = "custom";
+          mapCustomMultiplier.value = band.scale;
+          mapCustomOffset.value = band.offset;
+        } else {
+          mapCustomScalePreset.value = "none";
+        }
+        mapCustomScalePreset.dispatchEvent(new Event("change"));
+
+        // 2. Auto-configure recommended visualization parameters
+        if (band.vis) {
+          // If Kelvin units are auto-converted to Celsius, scale down min/max bounds as well!
+          const isKelvinConversion = mapCustomScalePreset.value === "kelvin_to_celsius";
+          const shift = isKelvinConversion ? -273.15 : 0.0;
+          
+          mapCustomVisMin.value = (band.vis.min + shift).toFixed(2);
+          mapCustomVisMax.value = (band.vis.max + shift).toFixed(2);
+          
+          if (band.vis.palette && band.vis.palette.length > 0) {
+            let recOpt = document.getElementById("map_custom_palette_recommended");
+            if (!recOpt) {
+              recOpt = document.createElement("option");
+              recOpt.id = "map_custom_palette_recommended";
+              recOpt.value = "recommended";
+              mapCustomPalette.appendChild(recOpt);
+            }
+            recOpt.textContent = `Recommended (${band.id} Palette)`;
+            recOpt.style.display = "block";
+            mapCustomPalette.value = "recommended";
+            mapCustomPalette.dataset.customPalette = band.vis.palette.join(",");
+          } else {
+            hideRecommendedPalette();
+          }
+        } else {
+          // Defaults if no recommended vis parameters
+          mapCustomVisMin.value = 0;
+          mapCustomVisMax.value = 100;
+          hideRecommendedPalette();
+        }
+        triggerMapUpdate();
+      });
+    }
+
+    function hideRecommendedPalette() {
+      const recOpt = document.getElementById("map_custom_palette_recommended");
+      if (recOpt) recOpt.style.display = "none";
+      if (mapCustomPalette.value === "recommended") {
+        mapCustomPalette.value = "viridis";
+      }
+    }
 
     if (mapCustomLoadBtn) {
       mapCustomLoadBtn.addEventListener("click", async () => {
@@ -398,11 +562,19 @@ document.addEventListener("DOMContentLoaded", () => {
             throw new Error(data.detail || "Failed to load GEE asset metadata");
           }
 
+          mapBandsMetadata = data.bands;
           mapCustomBandSelect.innerHTML = "";
-          data.bands.forEach(band => {
+          mapBandsMetadata.forEach(band => {
             const opt = document.createElement("option");
-            opt.value = band;
-            opt.textContent = band;
+            opt.value = band.id;
+            let label = band.id;
+            if (band.description) {
+              label += ` - ${band.description}`;
+            }
+            if (band.units) {
+              label += ` (${band.units})`;
+            }
+            opt.textContent = label;
             mapCustomBandSelect.appendChild(opt);
           });
 
@@ -416,11 +588,12 @@ document.addEventListener("DOMContentLoaded", () => {
           }
 
           if (mapCustomBandGroup) mapCustomBandGroup.style.display = "flex";
-          if (mapCustomScalingRow) mapCustomScalingRow.style.display = "flex";
+          if (mapCustomScalePresetGroup) mapCustomScalePresetGroup.style.display = "flex";
           if (mapCustomVisRow) mapCustomVisRow.style.display = "flex";
           if (mapCustomPaletteGroup) mapCustomPaletteGroup.style.display = "flex";
           
-          triggerMapUpdate();
+          // Trigger band select change to auto-load ranges & units
+          mapCustomBandSelect.dispatchEvent(new Event("change"));
           
         } catch (err) {
           showMapError(err.message);
@@ -545,6 +718,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Reactive Map Update Logic
     async function triggerMapUpdate() {
+      if (mapErrorOverlay) mapErrorOverlay.style.display = "none";
       const dataset = datasetSelect.value;
       const isCustom = dataset === "custom";
       const customAsset = mapCustomAssetInput.value.trim();
@@ -587,7 +761,10 @@ document.addEventListener("DOMContentLoaded", () => {
           const offset = parseFloat(document.getElementById("map_custom_offset").value) || 0.0;
           const vis_min = parseFloat(document.getElementById("map_custom_vis_min").value) || 0.0;
           const vis_max = parseFloat(document.getElementById("map_custom_vis_max").value) || 100.0;
-          const palette = document.getElementById("map_custom_palette").value;
+          let palette = document.getElementById("map_custom_palette").value;
+          if (palette === "recommended" && mapCustomPalette.dataset.customPalette) {
+            palette = mapCustomPalette.dataset.customPalette;
+          }
           
           queryUrl += `&band=${encodeURIComponent(band)}&reducer=${encodeURIComponent(reducer)}&multiplier=${multiplier}&offset=${offset}&vis_min=${vis_min}&vis_max=${vis_max}&palette=${encodeURIComponent(palette)}`;
         }
@@ -614,6 +791,10 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       } catch (error) {
         console.error("Map Update Error:", error);
+        if (mapErrorOverlay && mapErrorText) {
+          mapErrorText.textContent = error.message;
+          mapErrorOverlay.style.display = "flex";
+        }
       } finally {
         if (mapLoadingOverlay) mapLoadingOverlay.style.display = "none";
       }

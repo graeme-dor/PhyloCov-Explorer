@@ -72,6 +72,11 @@
             <div style="width: 14px; height: 14px; border: 2px solid #58a6ff; border-top-color: transparent; border-radius: 50%; animation: mapOverlaySpin 1s linear infinite; margin-right: 8px;"></div>
             Loading Map Layer...
           </div>
+          <div id="mapErrorOverlay" style="display: none; position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(248, 81, 73, 0.95); border: 1px solid rgba(248, 81, 73, 0.3); border-radius: 20px; padding: 8px 16px; z-index: 1000; align-items: center; justify-content: center; color: #ffffff; font-weight: 500; font-size: 0.9rem; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+            <span style="margin-right: 8px;">⚠️</span>
+            <span id="mapErrorText">Failed to load map layer</span>
+            <button type="button" id="mapErrorCloseBtn" style="background: none; border: none; color: white; margin-left: 12px; cursor: pointer; font-weight: bold; font-size: 1.1rem; line-height: 1; padding: 0 4px;">&times;</button>
+          </div>
           
           <!-- Native UI Overlay -->
           <div class="map-overlay-panel">
@@ -119,13 +124,24 @@
                     </select>
                   </div>
                   
+                  <div class="form-group" id="map_custom_scale_preset_group" style="display: none;">
+                    <label for="map_custom_scale_preset" style="font-size: 0.85rem; font-weight: 600;">Scale & Unit Conversion</label>
+                    <select id="map_custom_scale_preset" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                      <option value="none">Keep Original Values (No Scaling)</option>
+                      <option value="kelvin_to_celsius">Convert Kelvin to Celsius (-273.15)</option>
+                      <option value="modis_ndvi">Scale MODIS NDVI (x0.0001)</option>
+                      <option value="percentage">Scale to Percentage (x100)</option>
+                      <option value="custom">Custom Formula...</option>
+                    </select>
+                  </div>
+
                   <div class="form-row" id="map_custom_scaling_row" style="display: none; gap: 0.75rem;">
                     <div class="form-group">
-                      <label for="map_custom_multiplier" style="font-size: 0.85rem; font-weight: 600;">Multiplier</label>
+                      <label for="map_custom_multiplier" style="font-size: 0.85rem; font-weight: 600;">Scale Factor (Multiplier)</label>
                       <input type="number" id="map_custom_multiplier" name="multiplier" value="1.0" step="any" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
                     </div>
                     <div class="form-group">
-                      <label for="map_custom_offset" style="font-size: 0.85rem; font-weight: 600;">Offset</label>
+                      <label for="map_custom_offset" style="font-size: 0.85rem; font-weight: 600;">Value Shift (Offset)</label>
                       <input type="number" id="map_custom_offset" name="offset" value="0.0" step="any" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
                     </div>
                   </div>

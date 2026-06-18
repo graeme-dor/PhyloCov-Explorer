@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 import google.auth
 from google.auth.transport import requests
+import urllib.request
+import json
 app = FastAPI(title="PhyloCov Backend Export Service")
 
 # CORS support for future frontend integration
@@ -168,6 +170,11 @@ def process_gee_image(
         if preset_key == "modis_lst_range":
             adjusted_start, adjusted_end = adjust_monthly_dates(start_date, end_date)
             img_col = ee.ImageCollection(asset_id).filterDate(adjusted_start, adjusted_end)
+            if img_col.size().getInfo() == 0:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="No data available in this date range for MODIS LST Day-Night Range."
+                )
             day = img_col.select("LST_Day").mean().subtract(273.15)
             night = img_col.select("LST_Night").mean().subtract(273.15)
             return day.subtract(night)
@@ -178,6 +185,14 @@ def process_gee_image(
             adjusted_start, adjusted_end = start_date, end_date
             
         img_col = ee.ImageCollection(asset_id).filterDate(adjusted_start, adjusted_end)
+        if img_col.size().getInfo() == 0:
+            msg = "No data available in this date range."
+            if "era5" in preset_key:
+                msg += " Note: ERA5 reanalysis datasets typically have a 2-3 month processing lag."
+            elif "modis" in preset_key:
+                msg += " Note: MODIS datasets may have a short lag."
+            raise HTTPException(status_code=400, detail=msg)
+            
         img = img_col.select(target_band)
         
         if target_reducer == "sum":
@@ -220,6 +235,11 @@ def process_gee_image(
                 adjusted_start, adjusted_end = start_date, end_date
                 
             img_col = ee.ImageCollection(asset_id).filterDate(adjusted_start, adjusted_end)
+            if img_col.size().getInfo() == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No data available for custom GEE asset '{asset_id}' in the selected date range."
+                )
             if band:
                 img_col = img_col.select(band)
                 
@@ -257,11 +277,27 @@ class ExportRequest(BaseModel):
 def health_check():
     return {"status": "ok"}
 
+def fetch_stac_metadata(asset_id: str) -> Optional[dict]:
+    try:
+        parts = asset_id.split("/")
+        if not parts:
+            return None
+        first_part = parts[0]
+        underscored = asset_id.replace("/", "_")
+        url = f"https://storage.googleapis.com/earthengine-stac/catalog/{first_part}/{underscored}.json"
+        
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=2.0) as response:
+            return json.loads(response.read().decode())
+    except Exception:
+        return None
+
 @app.get("/datasets/info")
 def get_dataset_info(id: str):
     """
     Given a GEE Asset ID, queries whether it is an Image or ImageCollection,
-    and returns its available bands.
+    and returns its available bands with detailed descriptions, recommended scaling, 
+    and visualization parameters when available from Earth Engine STAC metadata catalog.
     """
     if not id:
         raise HTTPException(status_code=400, detail="Missing asset 'id' parameter.")
@@ -272,37 +308,109 @@ def get_dataset_info(id: str):
     else:
         asset_id = id
 
+    asset_type = None
+    direct_bands = []
+    
     try:
-        # 1. Try as Image
         img = ee.Image(asset_id)
-        bands = img.bandNames().getInfo()
-        return {
-            "type": "Image",
-            "bands": bands,
-            "asset_id": asset_id
-        }
+        direct_bands = img.bandNames().getInfo()
+        asset_type = "Image"
     except Exception as e_img:
-        # 2. Try as ImageCollection
         try:
             col = ee.ImageCollection(asset_id)
             first_img = col.first()
             if first_img is None:
                 raise HTTPException(status_code=404, detail=f"Asset '{asset_id}' is an empty ImageCollection.")
-            bands = first_img.bandNames().getInfo()
-            if preset_key == "modis_lst_range":
-                if "range" not in bands:
-                    bands.append("range")
-            return {
-                "type": "ImageCollection",
-                "bands": bands,
-                "asset_id": asset_id
-            }
+            direct_bands = first_img.bandNames().getInfo()
+            asset_type = "ImageCollection"
         except Exception as e_col:
             err_msg = str(e_img) if "not found" in str(e_img) else str(e_col)
             raise HTTPException(
                 status_code=400,
                 detail=f"Failed to load GEE asset '{asset_id}'. Error: {err_msg}"
             )
+
+    if preset_key == "modis_lst_range":
+        if "range" not in direct_bands:
+            direct_bands.append("range")
+
+    stac_data = fetch_stac_metadata(asset_id)
+    stac_bands = {}
+    gee_vis = []
+    
+    if stac_data:
+        summaries = stac_data.get("summaries", {})
+        for b in summaries.get("eo:bands", []):
+            name = b.get("name")
+            if name:
+                stac_bands[name] = {
+                    "description": b.get("description", ""),
+                    "scale": b.get("gee:scale", 1.0),
+                    "offset": b.get("gee:offset", 0.0),
+                    "units": b.get("gee:units", ""),
+                    "vis": None
+                }
+        gee_vis = summaries.get("gee:visualizations", [])
+
+    for vis in gee_vis:
+        band_vis = vis.get("image_visualization", {}).get("band_vis", {})
+        vis_bands = band_vis.get("bands", [])
+        if vis_bands:
+            primary_band = vis_bands[0]
+            if primary_band in stac_bands and not stac_bands[primary_band]["vis"]:
+                stac_bands[primary_band]["vis"] = {
+                    "min": band_vis.get("min", [0.0])[0],
+                    "max": band_vis.get("max", [100.0])[0],
+                    "palette": band_vis.get("palette", [])
+                }
+
+    rich_bands = []
+    for b_id in direct_bands:
+        if b_id in stac_bands:
+            rich_bands.append({
+                "id": b_id,
+                "description": stac_bands[b_id]["description"],
+                "scale": stac_bands[b_id]["scale"],
+                "offset": stac_bands[b_id]["offset"],
+                "units": stac_bands[b_id]["units"],
+                "vis": stac_bands[b_id]["vis"]
+            })
+        else:
+            desc = ""
+            units = ""
+            scale = 1.0
+            offset = 0.0
+            if b_id == "range":
+                desc = "Diurnal LST Range (LST_Day - LST_Night)"
+                units = "C"
+            elif b_id == "elevation":
+                desc = "Elevation"
+                units = "m"
+            elif b_id == "precipitation":
+                desc = "Precipitation"
+                units = "mm/day"
+            elif b_id == "temperature_2m" or b_id == "mean_2m_air_temperature":
+                desc = "Temperature"
+                units = "C"
+                offset = -273.15
+            elif b_id == "NDVI":
+                desc = "Normalized Difference Vegetation Index"
+                scale = 0.0001
+                
+            rich_bands.append({
+                "id": b_id,
+                "description": desc,
+                "scale": scale,
+                "offset": offset,
+                "units": units,
+                "vis": None
+            })
+
+    return {
+        "type": asset_type,
+        "asset_id": asset_id,
+        "bands": rich_bands
+    }
 
 @app.post("/exports")
 def create_export(req: ExportRequest):
@@ -548,14 +656,17 @@ def get_map_tiles(
             v_max = vis_max if vis_max is not None else 1.0
             
             palette_list = ['#440154', '#414487', '#2a788e', '#22a884', '#7ad151', '#fde725'] # Default viridis
-            if palette == "coolwarm":
-                palette_list = ['#313695', '#4575b4', '#74add1', '#ffffbf', '#fee090', '#f46d43', '#a50026']
-            elif palette == "grayscale":
-                palette_list = ['#000000', '#ffffff']
-            elif palette == "terrain":
-                palette_list = ['#000000', '#478FCD', '#86C58E', '#AFC35E', '#8F7131', '#B78D4C', '#E2B8A6', '#FFFFFF']
-            elif palette == "ndvi":
-                palette_list = ['#FFFFFF', '#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400', '#3E8601', '#207401', '#056201', '#004C00', '#023B01', '#012E01', '#011D01', '#011301']
+            if palette:
+                if "," in palette:
+                    palette_list = [f"#{c.strip().lstrip('#')}" for c in palette.split(",") if c.strip()]
+                elif palette == "coolwarm":
+                    palette_list = ['#313695', '#4575b4', '#74add1', '#ffffbf', '#fee090', '#f46d43', '#a50026']
+                elif palette == "grayscale":
+                    palette_list = ['#000000', '#ffffff']
+                elif palette == "terrain":
+                    palette_list = ['#000000', '#478FCD', '#86C58E', '#AFC35E', '#8F7131', '#B78D4C', '#E2B8A6', '#FFFFFF']
+                elif palette == "ndvi":
+                    palette_list = ['#FFFFFF', '#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400', '#3E8601', '#207401', '#056201', '#004C00', '#023B01', '#012E01', '#011D01', '#011301']
                 
             vis_params = {
                 "min": v_min,
