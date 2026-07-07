@@ -434,7 +434,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (points.length === 0) {
           if (statusText) {
-            statusText.textContent = "Error: No coordinates found. Check format.";
+            let errorMsg = "Error: No coordinates found. Check format.";
+            if (extension !== "json" && extension !== "geojson" && extension !== "csv" && extension !== "tsv") {
+              const matches = text.match(/\[&([^\]]+)\]/g);
+              if (matches) {
+                const keys = new Set();
+                const kvRegex = /([a-zA-Z_0-9%.]+)\s*=/g;
+                for (const m of matches) {
+                  let kv;
+                  while ((kv = kvRegex.exec(m)) !== null) {
+                    keys.add(kv[1]);
+                  }
+                }
+                if (keys.size > 0) {
+                  const detected = Array.from(keys).slice(0, 10).join(", ");
+                  errorMsg += ` (Detected keys: ${detected}${keys.size > 10 ? '...' : ''})`;
+                }
+              }
+            }
+            statusText.textContent = errorMsg;
             statusText.style.color = "#f85149";
           }
           return;
