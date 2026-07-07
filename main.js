@@ -225,26 +225,50 @@ document.addEventListener("DOMContentLoaded", () => {
     initDatasetSlider(datasetVal, prefix);
   }
 
-  // --- Coordinates Parser Logic ---
   function parseBeastCoordinates(text) {
     const coords = [];
-    const regexDual = /(?:location|xy|coordinates|coords|geographic)\s*=\s*\{?\s*(-?\d+(?:\.\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?)\s*\}?/gi;
-    let match;
-    while ((match = regexDual.exec(text)) !== null) {
-      const lat = parseFloat(match[1]);
-      const lon = parseFloat(match[2]);
+    const annotations = text.match(/\[&([^\]]+)\]/g);
+    if (!annotations) return coords;
+
+    for (const ann of annotations) {
+      const dict = {};
+      const kvRegex = /([a-zA-Z_0-9%.]+)\s*=\s*({[^}]+}|[-0-9.eE+]+|"[^"]*"|'[^']*')/g;
+      let kvMatch;
+      while ((kvMatch = kvRegex.exec(ann)) !== null) {
+        dict[kvMatch[1].toLowerCase()] = kvMatch[2];
+      }
+      
+      let lat = NaN;
+      let lon = NaN;
+      
+      // 1. Try vector format: location={1.23, 4.56}
+      for (const key in dict) {
+        const keyLower = key.toLowerCase();
+        if (keyLower.endsWith("location") || keyLower === "xy" || keyLower === "coordinates" || keyLower === "coords" || keyLower === "geographic") {
+          const val = dict[key];
+          const vecMatch = val.match(/\{?\s*(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)\s*\}?/);
+          if (vecMatch) {
+            lat = parseFloat(vecMatch[1]);
+            lon = parseFloat(vecMatch[2]);
+          }
+        }
+      }
+      
+      // 2. Try split scalar format: location1=-6.705, location2=-5.084
+      if (isNaN(lat) || isNaN(lon)) {
+        for (const key in dict) {
+          const keyLower = key.toLowerCase();
+          if (keyLower.endsWith("location1") || keyLower.endsWith("location_1") || keyLower === "lat" || keyLower === "latitude" || keyLower === "y" || keyLower.endsWith("coord1") || keyLower.endsWith("coord_1")) {
+            lat = parseFloat(dict[key]);
+          }
+          if (keyLower.endsWith("location2") || keyLower.endsWith("location_2") || keyLower === "lon" || keyLower === "longitude" || keyLower === "lng" || keyLower === "x" || keyLower.endsWith("coord2") || keyLower.endsWith("coord_2")) {
+            lon = parseFloat(dict[key]);
+          }
+        }
+      }
+      
       if (!isNaN(lat) && !isNaN(lon)) {
         coords.push({ lat, lon });
-      }
-    }
-    if (coords.length === 0) {
-      const regexLatLon = /(?:lat|latitude)\s*=\s*(-?\d+(?:\.\d+)?)[^\]]*(?:lon|longitude)\s*=\s*(-?\d+(?:\.\d+)?)/gi;
-      while ((match = regexLatLon.exec(text)) !== null) {
-        const lat = parseFloat(match[1]);
-        const lon = parseFloat(match[2]);
-        if (!isNaN(lat) && !isNaN(lon)) {
-          coords.push({ lat, lon });
-        }
       }
     }
     return coords;
