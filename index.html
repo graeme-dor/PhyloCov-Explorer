@@ -158,26 +158,48 @@
                 </div>
               </div>
 
-              <div class="form-row" id="map_date_row">
-                <div class="form-group">
-                  <label for="map_start_date">Start Date</label>
-                  <input type="date" id="map_start_date" name="start_date" value="2020-01-01" required>
+              <!-- Hidden date fields to preserve submission payload values -->
+              <input type="hidden" id="map_start_date" name="start_date" value="2020-01-01">
+              <input type="hidden" id="map_end_date" name="end_date" value="2020-01-31">
+
+              <div class="form-group" id="map_date_row">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label>Date Range</label>
+                  <span id="map_date_range_label" style="font-family: monospace; font-size: 0.85rem; color: var(--accent-color); font-weight: 600;">Jan 2020 - Jan 2020</span>
                 </div>
-                <div class="form-group">
-                  <label for="map_end_date">End Date</label>
-                  <input type="date" id="map_end_date" name="end_date" value="2020-01-31" required>
+                <div class="range-slider-container">
+                  <div class="slider-track" id="map_slider_track"></div>
+                  <input type="range" id="map_start_slider" min="0" max="100" value="0">
+                  <input type="range" id="map_end_slider" min="0" max="100" value="100">
                 </div>
               </div>
+
               <div class="form-group" style="margin-bottom: 0.5rem;">
                 <label>Region of Interest</label>
-                <div style="display: flex; gap: 1rem; margin-top: 0.25rem; margin-bottom: 0.5rem;">
+                <div style="display: flex; gap: 0.75rem; margin-top: 0.25rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
                   <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer;">
                     <input type="radio" name="roi_type" value="country" checked> Country
                   </label>
                   <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer;">
                     <input type="radio" name="roi_type" value="region"> Continent
                   </label>
+                  <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer;">
+                    <input type="radio" name="roi_type" value="bbox"> Uploaded Extent
+                  </label>
                 </div>
+                
+                <!-- BEAST/CSV/GeoJSON File Upload Dropzone -->
+                <div id="map_upload_panel" style="display: none; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">
+                  <div class="upload-dropzone" id="map_upload_dropzone">
+                    <span>Drag & drop BEAST run (.tree), CSV, or GeoJSON here, or click to browse</span>
+                    <input type="file" id="map_beast_upload" accept=".tree,.trees,.csv,.json,.geojson,.txt" style="display: none;">
+                  </div>
+                  <div id="map_upload_status" style="font-size: 0.8rem; color: var(--accent-secondary); font-family: monospace; display: none; text-align: left; padding: 4px 0;"></div>
+                  <label style="font-weight: normal; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; color: var(--text-muted);">
+                    <input type="checkbox" id="map_swap_coordinates"> Swap Lat / Lon coordinates
+                  </label>
+                </div>
+
                 <select id="map_country" name="country" required>
                   <option value="" disabled selected>Select a country...</option>
                   <option value="Abyei Area">Abyei Area</option>

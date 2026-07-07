@@ -57,12 +57,161 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  function updateDatasetUI(datasetVal, infoBox, startDateInput, endDateInput, dateRow) {
+  // Calculate total months between two YYYY-MM-DD dates
+  function calculateTotalMonths(startStr, endStr) {
+    const s = new Date(startStr);
+    const e = new Date(endStr);
+    return (e.getUTCFullYear() - s.getUTCFullYear()) * 12 + (e.getUTCMonth() - s.getUTCMonth());
+  }
+
+  // Get date string (first of month) from base date and months offset
+  function getDateFromMonths(baseStr, months) {
+    const s = new Date(baseStr);
+    s.setUTCMonth(s.getUTCMonth() + months);
+    const y = s.getUTCFullYear();
+    const m = String(s.getUTCMonth() + 1).padStart(2, '0');
+    return `${y}-${m}-01`;
+  }
+
+  // Get date string (last of month) from base date and months offset
+  function getEndDateFromMonths(baseStr, months) {
+    const s = new Date(baseStr);
+    s.setUTCMonth(s.getUTCMonth() + months + 1);
+    s.setUTCDate(0); // set to last day of previous month
+    const y = s.getUTCFullYear();
+    const m = String(s.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(s.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function formatMonthLabel(baseStr, months) {
+    const s = new Date(baseStr);
+    s.setUTCMonth(s.getUTCMonth() + months);
+    return `${monthNames[s.getUTCMonth()]} ${s.getUTCFullYear()}`;
+  }
+
+  function setupDualSlider(sliderTrackId, startSliderId, endSliderId, dateLabelId, hiddenStartId, hiddenEndId, baseDate, totalMonths, onChangeCallback) {
+    const sliderTrack = document.getElementById(sliderTrackId);
+    const startSlider = document.getElementById(startSliderId);
+    const endSlider = document.getElementById(endSliderId);
+    const dateLabel = document.getElementById(dateLabelId);
+    const hiddenStart = document.getElementById(hiddenStartId);
+    const hiddenEnd = document.getElementById(hiddenEndId);
+
+    if (!startSlider || !endSlider || !sliderTrack) return;
+
+    startSlider.min = 0;
+    startSlider.max = totalMonths;
+    endSlider.min = 0;
+    endSlider.max = totalMonths;
+
+    function updateSliderColorsAndValues(e) {
+      let val1 = parseInt(startSlider.value);
+      let val2 = parseInt(endSlider.value);
+
+      if (val1 > val2) {
+        if (e && e.target === startSlider) {
+          startSlider.value = val2;
+          val1 = val2;
+        } else {
+          endSlider.value = val1;
+          val2 = val1;
+        }
+      }
+
+      const pct1 = (val1 / totalMonths) * 100;
+      const pct2 = (val2 / totalMonths) * 100;
+      sliderTrack.style.background = `linear-gradient(to right, #30363d 0%, #30363d ${pct1}%, var(--accent-color) ${pct1}%, var(--accent-color) ${pct2}%, #30363d ${pct2}%, #30363d 100%)`;
+
+      const startDateStr = getDateFromMonths(baseDate, val1);
+      const endDateStr = getEndDateFromMonths(baseDate, val2);
+      
+      if (hiddenStart) hiddenStart.value = startDateStr;
+      if (hiddenEnd) hiddenEnd.value = endDateStr;
+
+      if (dateLabel) {
+        dateLabel.textContent = `${formatMonthLabel(baseDate, val1)} - ${formatMonthLabel(baseDate, val2)}`;
+      }
+
+      if (onChangeCallback) onChangeCallback(startDateStr, endDateStr);
+    }
+
+    startSlider.oninput = updateSliderColorsAndValues;
+    endSlider.oninput = updateSliderColorsAndValues;
+
+    updateSliderColorsAndValues();
+  }
+
+  function initDatasetSlider(datasetVal, prefix, customDates = null) {
+    const isMap = prefix === "map";
+    const startSliderId = `${prefix}_start_slider`;
+    const endSliderId = `${prefix}_end_slider`;
+    const trackId = `${prefix}_slider_track`;
+    const labelId = `${prefix}_date_range_label`;
+    const hiddenStartId = isMap ? "map_start_date" : "start_date";
+    const hiddenEndId = isMap ? "map_end_date" : "end_date";
+    const rowId = isMap ? "map_date_row" : "export_date_row";
+    
+    const row = document.getElementById(rowId);
+    if (!row) return;
+
+    if (datasetVal === "srtm") {
+      row.style.display = "none";
+      return;
+    }
+
+    let meta = datasetMetadata[datasetVal];
+    if (datasetVal === "custom") {
+      if (customDates && customDates.start && customDates.end) {
+        meta = { start: customDates.start, end: customDates.end };
+      } else {
+        row.style.display = "none";
+        return;
+      }
+    }
+
+    if (!meta || !meta.start || !meta.end) {
+      row.style.display = "none";
+      return;
+    }
+
+    row.style.display = "flex";
+    const totalMonths = calculateTotalMonths(meta.start, meta.end);
+
+    const startSlider = document.getElementById(startSliderId);
+    const endSlider = document.getElementById(endSliderId);
+    if (startSlider && endSlider) {
+      const defaultStart = Math.max(0, totalMonths - 12);
+      startSlider.value = defaultStart;
+      endSlider.value = totalMonths;
+      
+      setupDualSlider(
+        trackId, 
+        startSliderId, 
+        endSliderId, 
+        labelId, 
+        hiddenStartId, 
+        hiddenEndId, 
+        meta.start, 
+        totalMonths, 
+        () => {
+          if (isMap && typeof triggerMapUpdate === "function") {
+            triggerMapUpdate();
+          }
+        }
+      );
+    }
+  }
+
+  function updateDatasetUI(datasetVal, infoBox, prefix) {
     if (datasetVal === "custom") {
       if (infoBox) {
         infoBox.textContent = "Custom Google Earth Engine Dataset (enter Asset ID below)";
       }
-      if (dateRow) dateRow.style.display = "flex";
+      const rowId = prefix === "map" ? "map_date_row" : "export_date_row";
+      const row = document.getElementById(rowId);
+      if (row) row.style.display = "none";
       return;
     }
 
@@ -73,21 +222,225 @@ document.addEventListener("DOMContentLoaded", () => {
       infoBox.textContent = `${meta.text} | ${meta.rangeText}`;
     }
 
-    if (meta.start && meta.end) {
-      if (dateRow) dateRow.style.display = "flex";
-      if (startDateInput) {
-        startDateInput.min = meta.start;
-        startDateInput.max = meta.end;
+    initDatasetSlider(datasetVal, prefix);
+  }
+
+  // --- Coordinates Parser Logic ---
+  function parseBeastCoordinates(text) {
+    const coords = [];
+    const regexDual = /(?:location|xy|coordinates|coords|geographic)\s*=\s*\{?\s*(-?\d+(?:\.\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?)\s*\}?/gi;
+    let match;
+    while ((match = regexDual.exec(text)) !== null) {
+      const lat = parseFloat(match[1]);
+      const lon = parseFloat(match[2]);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        coords.push({ lat, lon });
       }
-      if (endDateInput) {
-        endDateInput.min = meta.start;
-        endDateInput.max = meta.end;
+    }
+    if (coords.length === 0) {
+      const regexLatLon = /(?:lat|latitude)\s*=\s*(-?\d+(?:\.\d+)?)[^\]]*(?:lon|longitude)\s*=\s*(-?\d+(?:\.\d+)?)/gi;
+      while ((match = regexLatLon.exec(text)) !== null) {
+        const lat = parseFloat(match[1]);
+        const lon = parseFloat(match[2]);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          coords.push({ lat, lon });
+        }
       }
-    } else {
-      // Static dataset, hide dates
-      if (dateRow) dateRow.style.display = "none";
+    }
+    return coords;
+  }
+
+  function parseCsvCoordinates(text) {
+    const coords = [];
+    const lines = text.split(/\r?\n/);
+    if (lines.length < 2) return coords;
+    
+    const header = lines[0].toLowerCase().split(/[,\t]/);
+    let latIdx = header.findIndex(h => h.includes("lat") || h === "y");
+    let lonIdx = header.findIndex(h => h.includes("lon") || h.includes("lng") || h === "x");
+    
+    if (latIdx === -1 || lonIdx === -1) {
+      latIdx = 0;
+      lonIdx = 1;
+    }
+    
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(/[,\t]/);
+      if (cols.length > Math.max(latIdx, lonIdx)) {
+        const lat = parseFloat(cols[latIdx]);
+        const lon = parseFloat(cols[lonIdx]);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          coords.push({ lat, lon });
+        }
+      }
+    }
+    return coords;
+  }
+
+  function parseGeoJsonCoordinates(text) {
+    const coords = [];
+    try {
+      const geojson = JSON.parse(text);
+      function traverse(obj) {
+        if (!obj) return;
+        if (obj.type === "Point") {
+          coords.push({ lat: obj.coordinates[1], lon: obj.coordinates[0] });
+        } else if (obj.type === "Feature") {
+          traverse(obj.geometry);
+        } else if (obj.type === "FeatureCollection" && Array.isArray(obj.features)) {
+          obj.features.forEach(traverse);
+        } else if (obj.coordinates && Array.isArray(obj.coordinates)) {
+          flattenCoordinates(obj.coordinates, obj.type).forEach(c => {
+            coords.push({ lat: c[1], lon: c[0] });
+          });
+        }
+      }
+      traverse(geojson);
+    } catch (e) {
+      console.error("GeoJSON parse error", e);
+    }
+    return coords;
+  }
+
+  function flattenCoordinates(coords, type) {
+    if (!Array.isArray(coords)) return [];
+    if (typeof coords[0] === 'number') {
+      return [coords];
+    }
+    if (type === "LineString" || type === "MultiPoint") {
+      return coords;
+    }
+    if (type === "Polygon" || type === "MultiLineString") {
+      return coords.flat(1);
+    }
+    if (type === "MultiPolygon") {
+      return coords.flat(2);
+    }
+    return coords.flat(5);
+  }
+
+  function getPaddedBoundingBox(points, bufferPercent = 5) {
+    if (points.length === 0) return null;
+    let lats = points.map(p => p.lat);
+    let lons = points.map(p => p.lon);
+    
+    let minLat = Math.min(...lats);
+    let maxLat = Math.max(...lats);
+    let minLon = Math.min(...lons);
+    let maxLon = Math.max(...lons);
+    
+    let latDiff = maxLat - minLat;
+    let lonDiff = maxLon - minLon;
+    
+    let latBuffer = latDiff * (bufferPercent / 100);
+    let lonBuffer = lonDiff * (bufferPercent / 100);
+    
+    if (latDiff === 0) latBuffer = 0.25;
+    if (lonDiff === 0) lonBuffer = 0.25;
+    
+    return {
+      minLat: Math.max(-90, minLat - latBuffer),
+      maxLat: Math.min(90, maxLat + latBuffer),
+      minLon: Math.max(-180, minLon - lonBuffer),
+      maxLon: Math.min(180, maxLon + lonBuffer)
+    };
+  }
+
+  function setupFileUpload(prefix, onParsedCallback) {
+    const dropzone = document.getElementById(`${prefix}_upload_dropzone`);
+    const fileInput = document.getElementById(`${prefix}_beast_upload`);
+    const statusText = document.getElementById(`${prefix}_upload_status`);
+    const swapCheckbox = document.getElementById(`${prefix}_swap_coordinates`);
+
+    if (!dropzone || !fileInput) return;
+
+    dropzone.addEventListener("click", () => fileInput.click());
+
+    dropzone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropzone.classList.add("dragover");
+    });
+
+    dropzone.addEventListener("dragleave", () => {
+      dropzone.classList.remove("dragover");
+    });
+
+    dropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("dragover");
+      if (e.dataTransfer.files.length > 0) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener("change", (e) => {
+      if (e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    if (swapCheckbox) {
+      swapCheckbox.addEventListener("change", () => {
+        if (onParsedCallback && uploadedPoints.length > 0) {
+          onParsedCallback(uploadedPoints, swapCheckbox.checked);
+        }
+      });
+    }
+
+    function handleFile(file) {
+      if (statusText) {
+        statusText.style.display = "block";
+        statusText.textContent = `Reading file: ${file.name}...`;
+        statusText.style.color = "var(--text-muted)";
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const text = e.target.result;
+        let points = [];
+        
+        const extension = file.name.split('.').pop().toLowerCase();
+        if (extension === "json" || extension === "geojson" || text.trim().startsWith("{")) {
+          points = parseGeoJsonCoordinates(text);
+        } else if (extension === "csv" || extension === "tsv") {
+          points = parseCsvCoordinates(text);
+        } else {
+          points = parseBeastCoordinates(text);
+        }
+
+        if (points.length === 0) {
+          if (statusText) {
+            statusText.textContent = "Error: No coordinates found. Check format.";
+            statusText.style.color = "#f85149";
+          }
+          return;
+        }
+
+        uploadedPoints = points;
+        
+        if (statusText) {
+          statusText.textContent = `Successfully parsed ${points.length} locations.`;
+          statusText.style.color = "var(--accent-secondary)";
+        }
+
+        const swap = swapCheckbox ? swapCheckbox.checked : false;
+        if (onParsedCallback) {
+          onParsedCallback(points, swap);
+        }
+      };
+
+      reader.onerror = function() {
+        if (statusText) {
+          statusText.textContent = "Error reading file.";
+          statusText.style.color = "#f85149";
+        }
+      };
+
+      reader.readAsText(file);
     }
   }
+
+  let uploadedPoints = [];
 
   // (Old iframe logic removed for Native Map Architecture)
   // Intersection Observer for fade-in elements
@@ -237,6 +590,11 @@ document.addEventListener("DOMContentLoaded", () => {
           } else {
             if (exportDateRow) exportDateRow.style.display = "flex";
             if (exportCustomReducerGroup) exportCustomReducerGroup.style.display = "flex";
+            if (data.start_date && data.end_date) {
+              initDatasetSlider("custom", "export", { start: data.start_date, end: data.end_date });
+            } else {
+              initDatasetSlider("custom", "export");
+            }
           }
 
           if (exportCustomBandGroup) exportCustomBandGroup.style.display = "flex";
@@ -261,9 +619,51 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
+    const exportRoiRadios = document.querySelectorAll('input[name="export_roi_type"]');
+    const exportCountryInput = document.getElementById("country");
+    const exportRegionInput = document.getElementById("export_region");
+    const exportUploadPanel = document.getElementById("export_upload_panel");
+    let currentExportBBox = null;
+
+    exportRoiRadios.forEach(radio => {
+      radio.addEventListener("change", (e) => {
+        exportCountryInput.value = "";
+        exportRegionInput.value = "";
+        currentExportBBox = null;
+        
+        if (e.target.value === "country") {
+          exportCountryInput.style.display = "block";
+          exportRegionInput.style.display = "none";
+          exportUploadPanel.style.display = "none";
+          exportCountryInput.required = true;
+          exportRegionInput.required = false;
+        } else if (e.target.value === "region") {
+          exportCountryInput.style.display = "none";
+          exportRegionInput.style.display = "block";
+          exportUploadPanel.style.display = "none";
+          exportCountryInput.required = false;
+          exportRegionInput.required = true;
+        } else if (e.target.value === "bbox") {
+          exportCountryInput.style.display = "none";
+          exportRegionInput.style.display = "none";
+          exportUploadPanel.style.display = "flex";
+          exportCountryInput.required = false;
+          exportRegionInput.required = false;
+        }
+      });
+    });
+
+    setupFileUpload("export", (points, swap) => {
+      const mappedPoints = swap ? points.map(p => ({ lat: p.lon, lon: p.lat })) : points;
+      const bbox = getPaddedBoundingBox(mappedPoints, 5);
+      if (bbox) {
+        currentExportBBox = bbox;
+      }
+    });
+
     if (exportDatasetSelect) {
       exportDatasetSelect.addEventListener("change", () => {
-        updateDatasetUI(exportDatasetSelect.value, exportDatasetInfoBox, exportStartDateInput, exportEndDateInput, exportDateRow);
+        updateDatasetUI(exportDatasetSelect.value, exportDatasetInfoBox, "export");
         if (exportDatasetSelect.value === "custom") {
           if (exportCustomPanel) exportCustomPanel.style.display = "flex";
           exportScaleCustom.value = exportScaleCustom.dataset.nativeResolution || 5000;
@@ -324,10 +724,26 @@ document.addEventListener("DOMContentLoaded", () => {
       const datasetVal = formData.get("dataset");
       const isCustom = datasetVal === "custom";
 
+      const roiType = document.querySelector('input[name="export_roi_type"]:checked').value;
+      let roiNamesList = [];
+      if (roiType === "bbox") {
+        if (!currentExportBBox) {
+          alert("Please upload a coordinate file first.");
+          exportBtn.disabled = false;
+          exportBtn.textContent = "Start Export";
+          return;
+        }
+        roiNamesList = [`${currentExportBBox.minLat},${currentExportBBox.minLon},${currentExportBBox.maxLat},${currentExportBBox.maxLon}`];
+      } else if (roiType === "region") {
+        roiNamesList = [exportRegionInput.value];
+      } else {
+        roiNamesList = [exportCountryInput.value];
+      }
+
       const payload = {
         dataset: isCustom ? exportCustomAssetInput.value.trim() : datasetVal,
-        roi_type: "country",
-        roi_names: [formData.get("country")],
+        roi_type: roiType,
+        roi_names: roiNamesList,
         start_date: isCustom && loadedExportAssetType === "Image" ? "2000-01-01" : formData.get("start_date"),
         end_date: isCustom && loadedExportAssetType === "Image" ? "2000-01-02" : formData.get("end_date"),
         scale: parseInt(formData.get("scale"), 10)
@@ -445,6 +861,61 @@ document.addEventListener("DOMContentLoaded", () => {
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
     let currentEELayer = null;
+    let uploadedBBoxLayer = null;
+    let uploadedMarkersLayer = null;
+    let currentCustomBBox = null;
+
+    function renderUploadedDataOnMap(map, points, swap = false) {
+      if (uploadedBBoxLayer) map.removeLayer(uploadedBBoxLayer);
+      if (uploadedMarkersLayer) map.removeLayer(uploadedMarkersLayer);
+      
+      if (points.length === 0) return;
+      
+      const mappedPoints = swap ? points.map(p => ({ lat: p.lon, lon: p.lat })) : points;
+      
+      // Plot markers
+      const markers = mappedPoints.map(p => L.circleMarker([p.lat, p.lon], {
+        radius: 4,
+        fillColor: "#58a6ff",
+        color: "#161b22",
+        weight: 1,
+        opacity: 0.8,
+        fillOpacity: 0.6
+      }));
+      uploadedMarkersLayer = L.layerGroup(markers).addTo(map);
+      
+      // Calculate bounding box
+      const bbox = getPaddedBoundingBox(mappedPoints, 5);
+      if (bbox) {
+        // Draw rectangle
+        uploadedBBoxLayer = L.rectangle([
+          [bbox.minLat, bbox.minLon],
+          [bbox.maxLat, bbox.maxLon]
+        ], {
+          color: "#2ea043",
+          weight: 2,
+          fillColor: "#2ea043",
+          fillOpacity: 0.1,
+          dashArray: "4, 4"
+        }).addTo(map);
+        
+        // Fit map bounds
+        map.fitBounds([
+          [bbox.minLat, bbox.minLon],
+          [bbox.maxLat, bbox.maxLon]
+        ], { padding: [40, 40] });
+        
+        currentCustomBBox = bbox;
+        
+        // Trigger map tiles update
+        triggerMapUpdate();
+      }
+    }
+
+    setupFileUpload("map", (points, swap) => {
+      renderUploadedDataOnMap(map, points, swap);
+    });
+
     const BACKEND_URL = "https://phylocov-export-backend-719941553080.europe-west1.run.app"; // Update for local dev if needed: http://127.0.0.1:8000
     
     const datasetSelect = document.getElementById("map_dataset");
@@ -631,7 +1102,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (datasetSelect) {
       datasetSelect.addEventListener("change", () => {
-        updateDatasetUI(datasetSelect.value, datasetInfoBox, startDateInput, endDateInput, mapDateRow);
+        updateDatasetUI(datasetSelect.value, datasetInfoBox, "map");
         
         if (datasetSelect.value === "custom") {
           if (mapCustomPanel) mapCustomPanel.style.display = "flex";
@@ -724,19 +1195,39 @@ document.addEventListener("DOMContentLoaded", () => {
         renderROITags();
         countryInput.value = "";
         regionInput.value = "";
-        triggerMapUpdate();
+        
+        // Clear custom coordinates
+        currentCustomBBox = null;
+        if (uploadedBBoxLayer) map.removeLayer(uploadedBBoxLayer);
+        if (uploadedMarkersLayer) map.removeLayer(uploadedMarkersLayer);
+        
+        const mapUploadPanel = document.getElementById("map_upload_panel");
         
         if (e.target.value === "country") {
           countryInput.style.display = "block";
           regionInput.style.display = "none";
+          mapUploadPanel.style.display = "none";
           countryInput.required = selectedROIs.size === 0;
           regionInput.required = false;
-        } else {
+        } else if (e.target.value === "region") {
           countryInput.style.display = "none";
           regionInput.style.display = "block";
+          mapUploadPanel.style.display = "none";
           countryInput.required = false;
           regionInput.required = selectedROIs.size === 0;
+        } else if (e.target.value === "bbox") {
+          countryInput.style.display = "none";
+          regionInput.style.display = "none";
+          mapUploadPanel.style.display = "flex";
+          countryInput.required = false;
+          regionInput.required = false;
+          
+          if (uploadedPoints.length > 0) {
+            const swap = document.getElementById("map_swap_coordinates").checked;
+            renderUploadedDataOnMap(map, uploadedPoints, swap);
+          }
         }
+        triggerMapUpdate();
       });
     });
 
@@ -759,11 +1250,14 @@ document.addEventListener("DOMContentLoaded", () => {
       // Update form required state based on selections
       if (roiType === "country") {
         countryInput.required = selectedROIs.size === 0;
-      } else {
+      } else if (roiType === "region") {
         regionInput.required = selectedROIs.size === 0;
+      } else {
+        countryInput.required = false;
+        regionInput.required = false;
       }
 
-      if (!dataset || (!isCustom && (!startDate || !endDate)) || selectedROIs.size === 0) {
+      if (!dataset || (!isCustom && (!startDate || !endDate)) || (roiType !== "bbox" && selectedROIs.size === 0) || (roiType === "bbox" && !currentCustomBBox)) {
         if (currentEELayer) {
           map.removeLayer(currentEELayer);
           currentEELayer = null;
@@ -771,7 +1265,12 @@ document.addEventListener("DOMContentLoaded", () => {
         return; // Wait until all required fields are filled
       }
 
-      const roiNames = Array.from(selectedROIs).join(",");
+      let roiNames = "";
+      if (roiType === "bbox") {
+        roiNames = `${currentCustomBBox.minLat},${currentCustomBBox.minLon},${currentCustomBBox.maxLat},${currentCustomBBox.maxLon}`;
+      } else {
+        roiNames = Array.from(selectedROIs).join(",");
+      }
 
       if (mapLoadingOverlay) mapLoadingOverlay.style.display = "flex";
 
@@ -921,10 +1420,24 @@ document.addEventListener("DOMContentLoaded", () => {
         mapTimerInterval = setInterval(updateMapTimer, 1000);
 
         const roiType = document.querySelector('input[name="roi_type"]:checked').value;
+        let roiNamesList = [];
+        if (roiType === "bbox") {
+          if (!currentCustomBBox) {
+            alert("Please upload a coordinate file first.");
+            mapExportBtn.disabled = false;
+            mapExportBtn.textContent = "Start Backend Export";
+            if (mapTimerInterval) clearInterval(mapTimerInterval);
+            return;
+          }
+          roiNamesList = [`${currentCustomBBox.minLat},${currentCustomBBox.minLon},${currentCustomBBox.maxLat},${currentCustomBBox.maxLon}`];
+        } else {
+          roiNamesList = Array.from(selectedROIs);
+        }
+
         const payload = {
           dataset: isCustom ? mapCustomAssetInput.value.trim() : datasetVal,
           roi_type: roiType,
-          roi_names: Array.from(selectedROIs),
+          roi_names: roiNamesList,
           start_date: startDate,
           end_date: endDate,
           scale: scale

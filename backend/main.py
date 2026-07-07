@@ -289,6 +289,8 @@ def get_dataset_info(id: str):
 
     asset_type = None
     direct_bands = []
+    start_date = None
+    end_date = None
     
     try:
         img = ee.Image(asset_id)
@@ -302,6 +304,18 @@ def get_dataset_info(id: str):
                 raise HTTPException(status_code=404, detail=f"Asset '{asset_id}' is an empty ImageCollection.")
             direct_bands = first_img.bandNames().getInfo()
             asset_type = "ImageCollection"
+            
+            # Retrieve date range dynamically
+            try:
+                first_img_sorted = col.sort("system:time_start").first()
+                last_img_sorted = col.sort("system:time_start", False).first()
+                start_ms = first_img_sorted.get("system:time_start").getInfo()
+                end_ms = last_img_sorted.get("system:time_start").getInfo()
+                if start_ms and end_ms:
+                    start_date = datetime.fromtimestamp(start_ms / 1000.0).strftime("%Y-%m-%d")
+                    end_date = datetime.fromtimestamp(end_ms / 1000.0).strftime("%Y-%m-%d")
+            except Exception as e_dates:
+                print(f"Failed to fetch date range for custom asset: {e_dates}")
         except Exception as e_col:
             err_msg = str(e_img) if "not found" in str(e_img) else str(e_col)
             raise HTTPException(
@@ -420,7 +434,9 @@ def get_dataset_info(id: str):
         "type": asset_type,
         "asset_id": asset_id,
         "resolution": native_res,
-        "bands": rich_bands
+        "bands": rich_bands,
+        "start_date": start_date,
+        "end_date": end_date
     }
 
 @app.post("/exports")
@@ -441,18 +457,24 @@ def create_export(req: ExportRequest):
 
     # Fetch ROI feature and check if it exists
     try:
-        lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
-        if req.roi_type == "region":
-            roi = lsib.filter(ee.Filter.inList("wld_rgn", req.roi_names))
+        if req.roi_type == "bbox":
+            coords = [float(x) for x in req.roi_names[0].split(",")] # format: minLat,minLon,maxLat,maxLon
+            # ee.Geometry.Rectangle coordinates are: [west, south, east, north]
+            # minLon, minLat, maxLon, maxLat -> [coords[1], coords[0], coords[3], coords[2]]
+            roi = ee.Geometry.Rectangle([coords[1], coords[0], coords[3], coords[2]])
         else:
-            roi = lsib.filter(ee.Filter.inList("country_na", req.roi_names))
-        
-        # Warning: roi.size().getInfo() makes a blocking network call to EE
-        if roi.size().getInfo() == 0:
-            raise HTTPException(
-                status_code=404, 
-                detail=f"{req.roi_type.capitalize()}s '{req.roi_names}' not found in USDOS/LSIB_SIMPLE/2017"
-            )
+            lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
+            if req.roi_type == "region":
+                roi = lsib.filter(ee.Filter.inList("wld_rgn", req.roi_names))
+            else:
+                roi = lsib.filter(ee.Filter.inList("country_na", req.roi_names))
+            
+            # Warning: roi.size().getInfo() makes a blocking network call to EE
+            if roi.size().getInfo() == 0:
+                raise HTTPException(
+                    status_code=404, 
+                    detail=f"{req.roi_type.capitalize()}s '{req.roi_names}' not found in USDOS/LSIB_SIMPLE/2017"
+                )
     except HTTPException:
         raise
     except Exception as e:
@@ -482,7 +504,9 @@ def create_export(req: ExportRequest):
         # Launch export task
         job_id = str(uuid.uuid4())
         
-        if len(req.roi_names) > 3:
+        if req.roi_type == "bbox":
+            safe_roi = "Uploaded_Extent"
+        elif len(req.roi_names) > 3:
             safe_roi = f"Multiple_{req.roi_type.capitalize()}s"
         else:
             safe_roi = "_and_".join([name.replace(" ", "_").replace("/", "_") for name in req.roi_names])
@@ -501,7 +525,7 @@ def create_export(req: ExportRequest):
             bucket=GCS_BUCKET,
             fileNamePrefix=file_prefix,
             scale=req.scale,
-            region=roi.geometry().bounds(),
+            region=roi if isinstance(roi, ee.Geometry) else roi.geometry().bounds(),
             crs="EPSG:4326",
             fileFormat="GeoTIFF",
             maxPixels=1e13
@@ -677,15 +701,23 @@ def get_map_tiles(
             # Automatically calculate dynamic min and max over the ROI bounding box
             if roi_names:
                 try:
-                    names_list = roi_names.split(",")
-                    lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
-                    if roi_type == "region":
-                        roi_feat = lsib.filter(ee.Filter.inList("wld_rgn", names_list))
+                    has_roi = False
+                    if roi_type == "bbox":
+                        coords = [float(x) for x in roi_names.split(",")]
+                        bounds_geom = ee.Geometry.Rectangle([coords[1], coords[0], coords[3], coords[2]])
+                        has_roi = True
                     else:
-                        roi_feat = lsib.filter(ee.Filter.inList("country_na", names_list))
-                        
-                    if roi_feat.size().getInfo() > 0:
-                        bounds_geom = roi_feat.geometry().bounds()
+                        names_list = roi_names.split(",")
+                        lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
+                        if roi_type == "region":
+                            roi_feat = lsib.filter(ee.Filter.inList("wld_rgn", names_list))
+                        else:
+                            roi_feat = lsib.filter(ee.Filter.inList("country_na", names_list))
+                        if roi_feat.size().getInfo() > 0:
+                            bounds_geom = roi_feat.geometry().bounds()
+                            has_roi = True
+                            
+                    if has_roi:
                         calc_scale = 50000 if roi_type == "region" else 25000
                         stats = img.reduceRegion(
                             reducer=ee.Reducer.minMax(),
@@ -745,29 +777,36 @@ def get_map_tiles(
 
         bounds = None
         if roi_names:
-            names_list = roi_names.split(",")
-            lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
-            if roi_type == "region":
-                roi = lsib.filter(ee.Filter.inList("wld_rgn", names_list))
+            if roi_type == "bbox":
+                coords = [float(x) for x in roi_names.split(",")]
+                roi = ee.Geometry.Rectangle([coords[1], coords[0], coords[3], coords[2]])
+                bounds = [[coords[0], coords[1]], [coords[2], coords[3]]]
+                roiMask = ee.Image.constant(1).clip(roi).selfMask()
+                img = img.updateMask(roiMask).clip(roi)
             else:
-                roi = lsib.filter(ee.Filter.inList("country_na", names_list))
-            
-            if roi.size().getInfo() == 0:
-                raise HTTPException(
-                    status_code=404, 
-                    detail=f"{roi_type.capitalize()}s '{roi_names}' not found in USDOS/LSIB_SIMPLE/2017"
-                )
+                names_list = roi_names.split(",")
+                lsib = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017")
+                if roi_type == "region":
+                    roi = lsib.filter(ee.Filter.inList("wld_rgn", names_list))
+                else:
+                    roi = lsib.filter(ee.Filter.inList("country_na", names_list))
                 
-            roiMask = ee.Image.constant(1).clip(roi).selfMask()
-            img = img.updateMask(roiMask).clip(roi)
-            
-            # Extract bounding box to return to the frontend
-            geom_dict = roi.geometry().bounds().getInfo()
-            coords = geom_dict['coordinates'][0]
-            lons = [p[0] for p in coords]
-            lats = [p[1] for p in coords]
-            # Leaflet bounds format: [[south, west], [north, east]]
-            bounds = [[min(lats), min(lons)], [max(lats), max(lons)]]
+                if roi.size().getInfo() == 0:
+                    raise HTTPException(
+                        status_code=404, 
+                        detail=f"{roi_type.capitalize()}s '{roi_names}' not found in USDOS/LSIB_SIMPLE/2017"
+                    )
+                    
+                roiMask = ee.Image.constant(1).clip(roi).selfMask()
+                img = img.updateMask(roiMask).clip(roi)
+                
+                # Extract bounding box to return to the frontend
+                geom_dict = roi.geometry().bounds().getInfo()
+                coords = geom_dict['coordinates'][0]
+                lons = [p[0] for p in coords]
+                lats = [p[1] for p in coords]
+                # Leaflet bounds format: [[south, west], [north, east]]
+                bounds = [[min(lats), min(lons)], [max(lats), max(lons)]]
 
         # Get the map ID dictionary which contains the tile fetcher URL
         map_id_dict = ee.Image(img).getMapId(vis_params)

@@ -111,19 +111,49 @@
                 </div>
               </div>
 
-              <div class="form-group">
-                <label for="country">Country</label>
+              <!-- Hidden date fields to preserve submission payload values -->
+              <input type="hidden" id="start_date" name="start_date" value="2020-01-01">
+              <input type="hidden" id="end_date" name="end_date" value="2020-01-31">
+
+              <div class="form-group" style="margin-bottom: 0.5rem;">
+                <label>Region of Interest</label>
+                <div style="display: flex; gap: 0.75rem; margin-top: 0.25rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+                  <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer;">
+                    <input type="radio" name="export_roi_type" value="country" checked> Country
+                  </label>
+                  <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer;">
+                    <input type="radio" name="export_roi_type" value="region"> Continent
+                  </label>
+                  <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer;">
+                    <input type="radio" name="export_roi_type" value="bbox"> Uploaded Extent
+                  </label>
+                </div>
+                
                 <input type="text" id="country" name="country" placeholder="e.g. South Africa" required>
+                <input type="text" id="export_region" placeholder="e.g. Africa" style="display: none;">
+
+                <!-- BEAST/CSV/GeoJSON File Upload Dropzone -->
+                <div id="export_upload_panel" style="display: none; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">
+                  <div class="upload-dropzone" id="export_upload_dropzone">
+                    <span>Drag & drop BEAST run (.tree), CSV, or GeoJSON here, or click to browse</span>
+                    <input type="file" id="export_beast_upload" accept=".tree,.trees,.csv,.json,.geojson,.txt" style="display: none;">
+                  </div>
+                  <div id="export_upload_status" style="font-size: 0.8rem; color: var(--accent-secondary); font-family: monospace; display: none; text-align: left; padding: 4px 0;"></div>
+                  <label style="font-weight: normal; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; color: var(--text-muted);">
+                    <input type="checkbox" id="export_swap_coordinates"> Swap Lat / Lon coordinates
+                  </label>
+                </div>
               </div>
 
-              <div class="form-row" id="export_date_row">
-                <div class="form-group">
-                  <label for="start_date">Start Date</label>
-                  <input type="date" id="start_date" name="start_date" value="2020-01-01" required>
+              <div class="form-group" id="export_date_row">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label>Date Range</label>
+                  <span id="export_date_range_label" style="font-family: monospace; font-size: 0.85rem; color: var(--accent-color); font-weight: 600;">Jan 2020 - Jan 2020</span>
                 </div>
-                <div class="form-group">
-                  <label for="end_date">End Date</label>
-                  <input type="date" id="end_date" name="end_date" value="2020-01-31" required>
+                <div class="range-slider-container">
+                  <div class="slider-track" id="export_slider_track"></div>
+                  <input type="range" id="export_start_slider" min="0" max="100" value="0">
+                  <input type="range" id="export_end_slider" min="0" max="100" value="100">
                 </div>
               </div>
 
