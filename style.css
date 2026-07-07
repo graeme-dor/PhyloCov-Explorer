@@ -711,9 +711,11 @@ iframe.loaded {
 .slider-track {
   position: absolute;
   height: 100%;
-  background: var(--accent-color);
+  width: 100%;
+  background: #30363d;
   border-radius: 3px;
   z-index: 1;
+  pointer-events: none;
 }
 
 .range-slider-container input[type="range"] {
