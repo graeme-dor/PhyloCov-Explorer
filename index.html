@@ -82,97 +82,7 @@
           <div class="map-overlay-panel">
             <h3>Visualise & Export</h3>
             <form id="nativeMapForm" class="map-form">
-              <div class="form-group">
-                <label for="map_dataset">Dataset</label>
-                <select id="map_dataset" name="dataset" required>
-                  <option value="chirps">CHIRPS Daily Precipitation</option>
-                  <option value="era5">ERA5 Daily Aggregates</option>
-                  <option value="era5_land_monthly">ERA5-Land Monthly Aggregates</option>
-                  <option value="modis_ndvi">MODIS NDVI (MOD13Q1)</option>
-                  <option value="modis_lst_day">MODIS Monthly LST Day (5.6km)</option>
-                  <option value="modis_lst_night">MODIS Monthly LST Night (5.6km)</option>
 
-                  <option value="srtm">SRTM Elevation (30m)</option>
-                  <option value="custom">Custom GEE Asset...</option>
-                </select>
-                <div id="datasetInfoBox" style="font-size: 0.8rem; color: #8b949e; margin-top: 0.35rem; font-family: monospace;">Native Resolution: ~5.5km | Temporal: Daily</div>
-                
-                <!-- Custom GEE Asset Panel -->
-                <div id="map_custom_panel" style="display: none; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1rem; margin-top: 0.75rem; flex-direction: column; gap: 0.75rem;">
-                  <div class="form-group">
-                    <label for="map_custom_asset" style="font-size: 0.85rem; font-weight: 600;">GEE Asset ID</label>
-                    <div style="display: flex; gap: 0.5rem; width: 100%;">
-                      <input type="text" id="map_custom_asset" placeholder="e.g. NASA/ORNL/DAYMET_V4" style="flex-grow: 1; padding: 0.5rem 0.75rem; font-size: 0.9rem;">
-                      <button type="button" id="map_custom_load_btn" class="btn-secondary" style="padding: 0.5rem 0.75rem; font-size: 0.9rem; margin-top: 0;">Load</button>
-                    </div>
-                    <div id="map_custom_error" style="color: #f85149; font-size: 0.8rem; display: none; margin-top: 0.25rem;"></div>
-                  </div>
-                  
-                  <div class="form-group" id="map_custom_band_group" style="display: none;">
-                    <label for="map_custom_band" style="font-size: 0.85rem; font-weight: 600;">Band</label>
-                    <select id="map_custom_band" name="band" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;"></select>
-                  </div>
-                  
-                  <div class="form-group" id="map_custom_reducer_group" style="display: none;">
-                    <label for="map_custom_reducer" style="font-size: 0.85rem; font-weight: 600;">Temporal Reducer</label>
-                    <select id="map_custom_reducer" name="reducer" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
-                      <option value="mean">Mean (Average)</option>
-                      <option value="sum">Sum (Total)</option>
-                      <option value="min">Min (Minimum)</option>
-                      <option value="max">Max (Maximum)</option>
-                      <option value="median">Median</option>
-                    </select>
-                  </div>
-                  
-                  <div class="form-group" id="map_custom_scale_preset_group" style="display: none;">
-                    <label for="map_custom_scale_preset" style="font-size: 0.85rem; font-weight: 600;">Scale & Unit Conversion</label>
-                    <select id="map_custom_scale_preset" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
-                      <option value="none">Keep Original Values (No Scaling)</option>
-                      <option value="custom">Custom Formula...</option>
-                    </select>
-                  </div>
-
-                  <div class="form-row" id="map_custom_scaling_row" style="display: none; gap: 0.75rem;">
-                    <div class="form-group">
-                      <label for="map_custom_multiplier" style="font-size: 0.85rem; font-weight: 600;">Scale Factor (Multiplier)</label>
-                      <input type="number" id="map_custom_multiplier" name="multiplier" value="1.0" step="any" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
-                    </div>
-                    <div class="form-group">
-                      <label for="map_custom_offset" style="font-size: 0.85rem; font-weight: 600;">Value Shift (Offset)</label>
-                      <input type="number" id="map_custom_offset" name="offset" value="0.0" step="any" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
-                    </div>
-                  </div>
-
-
-
-                  <div class="form-group" id="map_custom_palette_group" style="display: none;">
-                    <label for="map_custom_palette" style="font-size: 0.85rem; font-weight: 600;">Color Palette</label>
-                    <select id="map_custom_palette" name="palette" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
-                      <option value="viridis">Viridis (Sequential Purple-Green-Yellow)</option>
-                      <option value="coolwarm">Coolwarm (Diverging Blue-Red)</option>
-                      <option value="grayscale">Grayscale (Black-White)</option>
-                      <option value="terrain">Terrain (Elevation Colors)</option>
-                      <option value="ndvi">NDVI (Brown-Green)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Hidden date fields to preserve submission payload values -->
-              <input type="hidden" id="map_start_date" name="start_date" value="2020-01-01">
-              <input type="hidden" id="map_end_date" name="end_date" value="2020-01-31">
-
-              <div class="form-group" id="map_date_row">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <label>Date Range</label>
-                  <span id="map_date_range_label" style="font-family: monospace; font-size: 0.85rem; color: var(--accent-color); font-weight: 600;">Jan 2020 - Jan 2020</span>
-                </div>
-                <div class="range-slider-container">
-                  <div class="slider-track" id="map_slider_track"></div>
-                  <input type="range" id="map_start_slider" min="0" max="100" value="0">
-                  <input type="range" id="map_end_slider" min="0" max="100" value="100">
-                </div>
-              </div>
 
               <div class="form-group" style="margin-bottom: 0.5rem;">
                 <label>Region of Interest</label>
@@ -184,7 +94,10 @@
                     <input type="radio" name="roi_type" value="region"> Continent
                   </label>
                   <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer;">
-                    <input type="radio" name="roi_type" value="bbox"> Uploaded Extent
+                    <input type="radio" name="roi_type" value="bbox_upload"> Uploaded Extent
+                  </label>
+                  <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer;">
+                    <input type="radio" name="roi_type" value="bbox_draw"> Draw Extent
                   </label>
                 </div>
                 
@@ -198,6 +111,11 @@
                   <label style="font-weight: normal; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; color: var(--text-muted);">
                     <input type="checkbox" id="map_swap_coordinates"> Swap Lat / Lon coordinates
                   </label>
+                </div>
+
+                <!-- BBox Drawing Guidance -->
+                <div id="map_draw_guidance" style="display: none; font-size: 0.85rem; color: var(--accent-secondary); margin-bottom: 0.75rem; border: 1px dashed var(--accent-color); padding: 8px; border-radius: 6px; text-align: center; background: rgba(88, 166, 255, 0.05);">
+                  🖱️ Click and drag on the map to draw your bounding box.
                 </div>
 
                 <select id="map_country" name="country" required>
@@ -498,6 +416,96 @@
                   <option value="South America">South America</option>
                 </select>
                 <div id="roi_tags_container" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem;"></div>
+              </div>
+
+              <div class="form-group">
+                <label for="map_dataset">Dataset</label>
+                <select id="map_dataset" name="dataset" required>
+                  <option value="chirps">CHIRPS Daily Precipitation</option>
+                  <option value="era5">ERA5 Daily Aggregates</option>
+                  <option value="era5_land_monthly">ERA5-Land Monthly Aggregates</option>
+                  <option value="modis_ndvi">MODIS NDVI (MOD13Q1)</option>
+                  <option value="modis_lst_day">MODIS Monthly LST Day (5.6km)</option>
+                  <option value="modis_lst_night">MODIS Monthly LST Night (5.6km)</option>
+
+                  <option value="srtm">SRTM Elevation (30m)</option>
+                  <option value="custom">Custom GEE Asset...</option>
+                </select>
+                <div id="datasetInfoBox" style="font-size: 0.8rem; color: #8b949e; margin-top: 0.35rem; font-family: monospace;">Native Resolution: ~5.5km | Temporal: Daily</div>
+                
+                <!-- Custom GEE Asset Panel -->
+                <div id="map_custom_panel" style="display: none; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1rem; margin-top: 0.75rem; flex-direction: column; gap: 0.75rem;">
+                  <div class="form-group">
+                    <label for="map_custom_asset" style="font-size: 0.85rem; font-weight: 600;">GEE Asset ID</label>
+                    <div style="display: flex; gap: 0.5rem; width: 100%;">
+                      <input type="text" id="map_custom_asset" placeholder="e.g. NASA/ORNL/DAYMET_V4" style="flex-grow: 1; padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                      <button type="button" id="map_custom_load_btn" class="btn-secondary" style="padding: 0.5rem 0.75rem; font-size: 0.9rem; margin-top: 0;">Load</button>
+                    </div>
+                    <div id="map_custom_error" style="color: #f85149; font-size: 0.8rem; display: none; margin-top: 0.25rem;"></div>
+                  </div>
+                  
+                  <div class="form-group" id="map_custom_band_group" style="display: none;">
+                    <label for="map_custom_band" style="font-size: 0.85rem; font-weight: 600;">Band</label>
+                    <select id="map_custom_band" name="band" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;"></select>
+                  </div>
+                  
+                  <div class="form-group" id="map_custom_reducer_group" style="display: none;">
+                    <label for="map_custom_reducer" style="font-size: 0.85rem; font-weight: 600;">Temporal Reducer</label>
+                    <select id="map_custom_reducer" name="reducer" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                      <option value="mean">Mean (Average)</option>
+                      <option value="sum">Sum (Total)</option>
+                      <option value="min">Min (Minimum)</option>
+                      <option value="max">Max (Maximum)</option>
+                      <option value="median">Median</option>
+                    </select>
+                  </div>
+                  
+                  <div class="form-group" id="map_custom_scale_preset_group" style="display: none;">
+                    <label for="map_custom_scale_preset" style="font-size: 0.85rem; font-weight: 600;">Scale & Unit Conversion</label>
+                    <select id="map_custom_scale_preset" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                      <option value="none">Keep Original Values (No Scaling)</option>
+                      <option value="custom">Custom Formula...</option>
+                    </select>
+                  </div>
+
+                  <div class="form-row" id="map_custom_scaling_row" style="display: none; gap: 0.75rem;">
+                    <div class="form-group">
+                      <label for="map_custom_multiplier" style="font-size: 0.85rem; font-weight: 600;">Scale Factor (Multiplier)</label>
+                      <input type="number" id="map_custom_multiplier" name="multiplier" value="1.0" step="any" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                    </div>
+                    <div class="form-group">
+                      <label for="map_custom_offset" style="font-size: 0.85rem; font-weight: 600;">Value Shift (Offset)</label>
+                      <input type="number" id="map_custom_offset" name="offset" value="0.0" step="any" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                    </div>
+                  </div>
+
+                  <div class="form-group" id="map_custom_palette_group" style="display: none;">
+                    <label for="map_custom_palette" style="font-size: 0.85rem; font-weight: 600;">Color Palette</label>
+                    <select id="map_custom_palette" name="palette" style="padding: 0.5rem 0.75rem; font-size: 0.9rem;">
+                      <option value="viridis">Viridis (Sequential Purple-Green-Yellow)</option>
+                      <option value="coolwarm">Coolwarm (Diverging Blue-Red)</option>
+                      <option value="grayscale">Grayscale (Black-White)</option>
+                      <option value="terrain">Terrain (Elevation Colors)</option>
+                      <option value="ndvi">NDVI (Brown-Green)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Hidden date fields to preserve submission payload values -->
+              <input type="hidden" id="map_start_date" name="start_date" value="2020-01-01">
+              <input type="hidden" id="map_end_date" name="end_date" value="2020-01-31">
+
+              <div class="form-group" id="map_date_row">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label>Date Range</label>
+                  <span id="map_date_range_label" style="font-family: monospace; font-size: 0.85rem; color: var(--accent-color); font-weight: 600;">Jan 2020 - Jan 2020</span>
+                </div>
+                <div class="range-slider-container">
+                  <div class="slider-track" id="map_slider_track"></div>
+                  <input type="range" id="map_start_slider" min="0" max="100" value="0">
+                  <input type="range" id="map_end_slider" min="0" max="100" value="100">
+                </div>
               </div>
               <div class="form-group" style="margin-top: 1.5rem;">
                 <label for="map_scale_select">Export Resolution (m)</label>

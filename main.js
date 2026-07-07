@@ -685,7 +685,7 @@ document.addEventListener("DOMContentLoaded", () => {
           exportUploadPanel.style.display = "none";
           exportCountryInput.required = false;
           exportRegionInput.required = true;
-        } else if (e.target.value === "bbox") {
+        } else if (e.target.value === "bbox_upload") {
           exportCountryInput.style.display = "none";
           exportRegionInput.style.display = "none";
           exportUploadPanel.style.display = "flex";
@@ -768,7 +768,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const roiType = document.querySelector('input[name="export_roi_type"]:checked').value;
       let roiNamesList = [];
-      if (roiType === "bbox") {
+      if (roiType === "bbox_upload") {
         if (!currentExportBBox) {
           alert("Please upload a coordinate file first.");
           exportBtn.disabled = false;
@@ -784,7 +784,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const payload = {
         dataset: isCustom ? exportCustomAssetInput.value.trim() : datasetVal,
-        roi_type: roiType,
+        roi_type: roiType === "bbox_upload" ? "bbox" : roiType,
         roi_names: roiNamesList,
         start_date: isCustom && loadedExportAssetType === "Image" ? "2000-01-01" : formData.get("start_date"),
         end_date: isCustom && loadedExportAssetType === "Image" ? "2000-01-02" : formData.get("end_date"),
@@ -906,6 +906,78 @@ document.addEventListener("DOMContentLoaded", () => {
     let uploadedBBoxLayer = null;
     let uploadedMarkersLayer = null;
     let currentCustomBBox = null;
+
+    let isDrawingMode = false;
+    let drawStartLatLng = null;
+    let drawRectangleLayer = null;
+
+    function handleMapMouseDown(e) {
+      if (!isDrawingMode) return;
+      
+      drawStartLatLng = e.latlng;
+      map.dragging.disable();
+      
+      if (drawRectangleLayer) map.removeLayer(drawRectangleLayer);
+      if (uploadedBBoxLayer) map.removeLayer(uploadedBBoxLayer);
+      if (uploadedMarkersLayer) map.removeLayer(uploadedMarkersLayer);
+      
+      drawRectangleLayer = L.rectangle([drawStartLatLng, drawStartLatLng], {
+        color: "#2ea043",
+        weight: 2,
+        fillColor: "#2ea043",
+        fillOpacity: 0.1,
+        dashArray: "4, 4"
+      }).addTo(map);
+      
+      map.on("mousemove", handleMapMouseMove);
+    }
+
+    function handleMapMouseMove(e) {
+      if (!isDrawingMode || !drawStartLatLng) return;
+      
+      const currentLatLng = e.latlng;
+      if (drawRectangleLayer) {
+        drawRectangleLayer.setBounds([drawStartLatLng, currentLatLng]);
+      }
+    }
+
+    function handleMapMouseUp(e) {
+      if (!isDrawingMode || !drawStartLatLng) return;
+      
+      map.off("mousemove", handleMapMouseMove);
+      map.dragging.enable();
+      
+      const drawEndLatLng = e.latlng;
+      const lat1 = drawStartLatLng.lat;
+      const lon1 = drawStartLatLng.lng;
+      const lat2 = drawEndLatLng.lat;
+      const lon2 = drawEndLatLng.lng;
+      
+      const distance = drawStartLatLng.distanceTo(drawEndLatLng);
+      if (distance > 10) {
+        currentCustomBBox = {
+          minLat: Math.min(lat1, lat2),
+          minLon: Math.min(lon1, lon2),
+          maxLat: Math.max(lat1, lat2),
+          maxLon: Math.max(lon1, lon2)
+        };
+        
+        uploadedBBoxLayer = drawRectangleLayer;
+        drawRectangleLayer = null;
+        
+        triggerMapUpdate();
+      } else {
+        if (drawRectangleLayer) {
+          map.removeLayer(drawRectangleLayer);
+          drawRectangleLayer = null;
+        }
+      }
+      
+      drawStartLatLng = null;
+    }
+
+    map.on("mousedown", handleMapMouseDown);
+    map.on("mouseup", handleMapMouseUp);
 
     function renderUploadedDataOnMap(map, points, swap = false) {
       if (uploadedBBoxLayer) map.removeLayer(uploadedBBoxLayer);
@@ -1245,6 +1317,17 @@ document.addEventListener("DOMContentLoaded", () => {
         
         const mapUploadPanel = document.getElementById("map_upload_panel");
         
+        const drawGuidance = document.getElementById("map_draw_guidance");
+
+        // Clear drawing states
+        isDrawingMode = false;
+        map.getContainer().style.cursor = "";
+        if (drawGuidance) drawGuidance.style.display = "none";
+        if (drawRectangleLayer) {
+          map.removeLayer(drawRectangleLayer);
+          drawRectangleLayer = null;
+        }
+        
         if (e.target.value === "country") {
           countryInput.style.display = "block";
           regionInput.style.display = "none";
@@ -1257,7 +1340,7 @@ document.addEventListener("DOMContentLoaded", () => {
           mapUploadPanel.style.display = "none";
           countryInput.required = false;
           regionInput.required = selectedROIs.size === 0;
-        } else if (e.target.value === "bbox") {
+        } else if (e.target.value === "bbox_upload") {
           countryInput.style.display = "none";
           regionInput.style.display = "none";
           mapUploadPanel.style.display = "flex";
@@ -1268,6 +1351,16 @@ document.addEventListener("DOMContentLoaded", () => {
             const swap = document.getElementById("map_swap_coordinates").checked;
             renderUploadedDataOnMap(map, uploadedPoints, swap);
           }
+        } else if (e.target.value === "bbox_draw") {
+          countryInput.style.display = "none";
+          regionInput.style.display = "none";
+          mapUploadPanel.style.display = "none";
+          countryInput.required = false;
+          regionInput.required = false;
+          
+          isDrawingMode = true;
+          map.getContainer().style.cursor = "crosshair";
+          if (drawGuidance) drawGuidance.style.display = "block";
         }
         triggerMapUpdate();
       });
@@ -1288,6 +1381,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const endDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-02" : endDateInput.value;
       
       const roiType = document.querySelector('input[name="roi_type"]:checked').value;
+      const isBBox = (roiType === "bbox_upload" || roiType === "bbox_draw");
       
       // Update form required state based on selections
       if (roiType === "country") {
@@ -1299,7 +1393,7 @@ document.addEventListener("DOMContentLoaded", () => {
         regionInput.required = false;
       }
 
-      if (!dataset || (!isCustom && (!startDate || !endDate)) || (roiType !== "bbox" && selectedROIs.size === 0) || (roiType === "bbox" && !currentCustomBBox)) {
+      if (!dataset || (!isCustom && (!startDate || !endDate)) || (!isBBox && selectedROIs.size === 0) || (isBBox && !currentCustomBBox)) {
         if (currentEELayer) {
           map.removeLayer(currentEELayer);
           currentEELayer = null;
@@ -1308,7 +1402,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       let roiNames = "";
-      if (roiType === "bbox") {
+      if (isBBox) {
         roiNames = `${currentCustomBBox.minLat},${currentCustomBBox.minLon},${currentCustomBBox.maxLat},${currentCustomBBox.maxLon}`;
       } else {
         roiNames = Array.from(selectedROIs).join(",");
@@ -1317,7 +1411,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (mapLoadingOverlay) mapLoadingOverlay.style.display = "flex";
 
       try {
-        let queryUrl = `${BACKEND_URL}/map?dataset=${encodeURIComponent(isCustom ? customAsset : dataset)}&start_date=${startDate}&end_date=${endDate}&roi_type=${roiType}&roi_names=${encodeURIComponent(roiNames)}`;
+        const queryRoiType = isBBox ? "bbox" : roiType;
+        let queryUrl = `${BACKEND_URL}/map?dataset=${encodeURIComponent(isCustom ? customAsset : dataset)}&start_date=${startDate}&end_date=${endDate}&roi_type=${queryRoiType}&roi_names=${encodeURIComponent(roiNames)}`;
         
         if (isCustom) {
           const band = mapCustomBandSelect.value;
@@ -1462,10 +1557,11 @@ document.addEventListener("DOMContentLoaded", () => {
         mapTimerInterval = setInterval(updateMapTimer, 1000);
 
         const roiType = document.querySelector('input[name="roi_type"]:checked').value;
+        const isBBox = (roiType === "bbox_upload" || roiType === "bbox_draw");
         let roiNamesList = [];
-        if (roiType === "bbox") {
+        if (isBBox) {
           if (!currentCustomBBox) {
-            alert("Please upload a coordinate file first.");
+            alert(roiType === "bbox_upload" ? "Please upload a coordinate file first." : "Please draw a bounding box on the map first.");
             mapExportBtn.disabled = false;
             mapExportBtn.textContent = "Start Backend Export";
             if (mapTimerInterval) clearInterval(mapTimerInterval);
@@ -1478,7 +1574,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const payload = {
           dataset: isCustom ? mapCustomAssetInput.value.trim() : datasetVal,
-          roi_type: roiType,
+          roi_type: isBBox ? "bbox" : roiType,
           roi_names: roiNamesList,
           start_date: startDate,
           end_date: endDate,
