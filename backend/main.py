@@ -141,7 +141,8 @@ def process_gee_image(
     band: Optional[str] = None,
     reducer: str = "mean",
     multiplier: float = 1.0,
-    offset: float = 0.0
+    offset: float = 0.0,
+    downsample_large_ranges: bool = False
 ) -> ee.Image:
     preset_key = dataset.lower()
     
@@ -164,6 +165,18 @@ def process_gee_image(
             adjusted_start, adjusted_end = start_date, end_date
             
         img_col = ee.ImageCollection(asset_id).filterDate(adjusted_start, adjusted_end)
+
+        # Downsample large ranges for daily map visualization to prevent Google EE timeouts
+        if downsample_large_ranges and not is_monthly:
+            try:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+                days_span = (end_dt - start_dt).days
+                if days_span > 1095: # Spans > 3 years
+                    # Filter to only the 1st day of each month
+                    img_col = img_col.filter(ee.Filter.calendarRange(1, 1, 'day_of_month'))
+            except Exception as e_ds:
+                print(f"Downsampling failed: {e_ds}")
         if img_col.size().getInfo() == 0:
             msg = "No data available in this date range."
             if "era5" in preset_key:
@@ -214,6 +227,18 @@ def process_gee_image(
                 adjusted_start, adjusted_end = start_date, end_date
                 
             img_col = ee.ImageCollection(asset_id).filterDate(adjusted_start, adjusted_end)
+
+            # Downsample large ranges for daily map visualization to prevent Google EE timeouts
+            if downsample_large_ranges and not is_monthly:
+                try:
+                    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+                    days_span = (end_dt - start_dt).days
+                    if days_span > 1095: # Spans > 3 years
+                        img_col = img_col.filter(ee.Filter.calendarRange(1, 1, 'day_of_month'))
+                except Exception as e_ds:
+                    print(f"Downsampling failed: {e_ds}")
+
             if img_col.size().getInfo() == 0:
                 raise HTTPException(
                     status_code=400,
@@ -684,7 +709,8 @@ def get_map_tiles(
             band=band,
             reducer=reducer,
             multiplier=multiplier,
-            offset=offset
+            offset=offset,
+            downsample_large_ranges=True
         )
 
         if preset_key in PRESETS:
