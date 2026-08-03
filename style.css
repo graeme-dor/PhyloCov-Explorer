@@ -805,7 +805,7 @@ iframe.loaded {
   border: none;
   padding: 0;
   margin: 0;
-  height: 100%;
+  height: 16px; /* Match thumb height to align bounds */
   pointer-events: none;
   appearance: none;
   -webkit-appearance: none;
@@ -815,18 +815,18 @@ iframe.loaded {
   outline: none;
 }
 
-/* Reset default webkit and firefox range tracks */
+/* Reset default webkit and firefox range tracks to correct height */
 .range-slider-container input[type="range"]::-webkit-slider-runnable-track {
   background: transparent;
   border: none;
-  height: 100%;
+  height: 6px; /* Match background track height */
   padding: 0;
   margin: 0;
 }
 .range-slider-container input[type="range"]::-moz-range-track {
   background: transparent;
   border: none;
-  height: 100%;
+  height: 6px;
   padding: 0;
   margin: 0;
 }
@@ -844,7 +844,7 @@ iframe.loaded {
   pointer-events: auto;
   box-shadow: 0 2px 6px rgba(0,0,0,0.4);
   transition: transform 0.1s ease, background-color 0.15s ease, border-color 0.15s ease;
-  margin-top: 0;
+  margin-top: -5px; /* Centering math: (track_height - thumb_height)/2 = (6px - 16px)/2 = -5px */
 }
 
 .range-slider-container input[type="range"]::-webkit-slider-thumb:hover {
@@ -863,6 +863,7 @@ iframe.loaded {
   pointer-events: auto;
   box-shadow: 0 2px 6px rgba(0,0,0,0.4);
   transition: transform 0.1s ease, background-color 0.15s ease, border-color 0.15s ease;
+  box-sizing: border-box;
 }
 
 .range-slider-container input[type="range"]::-moz-range-thumb:hover {

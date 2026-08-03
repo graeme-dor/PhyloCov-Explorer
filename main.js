@@ -258,6 +258,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const startSlider = document.getElementById(startSliderId);
     const endSlider = document.getElementById(endSliderId);
     if (startSlider && endSlider) {
+      // Set min and max limits first to prevent the browser from clamping the values to the HTML default max (100)
+      startSlider.min = 0;
+      startSlider.max = totalMonths;
+      endSlider.min = 0;
+      endSlider.max = totalMonths;
+
       const defaultStart = 0; // Default to full period of the dataset
       startSlider.value = defaultStart;
       endSlider.value = totalMonths;
