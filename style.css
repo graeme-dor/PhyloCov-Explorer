@@ -708,6 +708,84 @@ iframe.loaded {
   margin: 1rem 0 1.25rem 0;
 }
 
+/* Slider Track End-Caps (Visual Boundaries) */
+.range-slider-container::before,
+.range-slider-container::after {
+  content: "";
+  position: absolute;
+  width: 2px;
+  height: 14px;
+  background: #444c56;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+.range-slider-container::before {
+  left: 0;
+  border-radius: 1px 0 0 1px;
+}
+.range-slider-container::after {
+  right: 0;
+  border-radius: 0 1px 1px 0;
+}
+
+/* Date Pickers styling */
+.date-inputs-container {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.date-input-group {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.date-input-group label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.date-picker-input {
+  background: var(--bg-color-alt);
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: var(--text-color);
+  padding: 0.45rem 0.6rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.date-picker-input:hover {
+  border-color: #8b949e;
+}
+
+.date-picker-input:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+}
+
+/* Make custom calendar icon display nicely in dark mode */
+.date-picker-input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.date-picker-input::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+
 .slider-track {
   position: absolute;
   height: 100%;

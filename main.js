@@ -106,7 +106,23 @@ document.addEventListener("DOMContentLoaded", () => {
     endSlider.min = 0;
     endSlider.max = totalMonths;
 
-    function updateSliderColorsAndValues(e) {
+    const prefix = startSliderId.split("_")[0]; // "map" or "export"
+    const startPicker = document.getElementById(`${prefix}_start_date_input`);
+    const endPicker = document.getElementById(`${prefix}_end_date_input`);
+
+    const minDate = baseDate;
+    const maxDate = getEndDateFromMonths(baseDate, totalMonths);
+
+    if (startPicker) {
+      startPicker.min = minDate;
+      startPicker.max = maxDate;
+    }
+    if (endPicker) {
+      endPicker.min = minDate;
+      endPicker.max = maxDate;
+    }
+
+    function updateSliderColorsAndValues(e, exactStartDate = null, exactEndDate = null) {
       let val1 = parseInt(startSlider.value);
       let val2 = parseInt(endSlider.value);
 
@@ -124,8 +140,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const pct2 = (val2 / totalMonths) * 100;
       sliderTrack.style.background = `linear-gradient(to right, #30363d 0%, #30363d ${pct1}%, var(--accent-color) ${pct1}%, var(--accent-color) ${pct2}%, #30363d ${pct2}%, #30363d 100%)`;
 
-      const startDateStr = getDateFromMonths(baseDate, val1);
-      const endDateStr = getEndDateFromMonths(baseDate, val2);
+      const startDateStr = exactStartDate || getDateFromMonths(baseDate, val1);
+      const endDateStr = exactEndDate || getEndDateFromMonths(baseDate, val2);
       
       if (hiddenStart) hiddenStart.value = startDateStr;
       if (hiddenEnd) hiddenEnd.value = endDateStr;
@@ -134,11 +150,71 @@ document.addEventListener("DOMContentLoaded", () => {
         dateLabel.textContent = `${formatMonthLabel(baseDate, val1)} - ${formatMonthLabel(baseDate, val2)}`;
       }
 
+      // Sync slider state to date pickers
+      if (startPicker && startPicker.value !== startDateStr) {
+        startPicker.value = startDateStr;
+      }
+      if (endPicker && endPicker.value !== endDateStr) {
+        endPicker.value = endDateStr;
+      }
+
       if (onChangeCallback) onChangeCallback(startDateStr, endDateStr);
     }
 
     startSlider.oninput = updateSliderColorsAndValues;
     endSlider.oninput = updateSliderColorsAndValues;
+
+    // Listen to manual date changes in start picker
+    if (startPicker) {
+      startPicker.addEventListener("change", () => {
+        let dateVal = startPicker.value;
+        if (!dateVal) return;
+
+        if (dateVal < minDate) {
+          dateVal = minDate;
+        }
+        if (dateVal > maxDate) {
+          dateVal = maxDate;
+        }
+
+        const currentEndDate = endPicker ? endPicker.value : getEndDateFromMonths(baseDate, parseInt(endSlider.value));
+        if (dateVal > currentEndDate) {
+          dateVal = currentEndDate;
+        }
+
+        let monthsOffset = calculateTotalMonths(baseDate, dateVal);
+        monthsOffset = Math.max(0, Math.min(totalMonths, monthsOffset));
+
+        startSlider.value = monthsOffset;
+        updateSliderColorsAndValues(null, dateVal, null);
+      });
+    }
+
+    // Listen to manual date changes in end picker
+    if (endPicker) {
+      endPicker.addEventListener("change", () => {
+        let dateVal = endPicker.value;
+        if (!dateVal) return;
+
+        if (dateVal < minDate) {
+          dateVal = minDate;
+        }
+        if (dateVal > maxDate) {
+          dateVal = maxDate;
+        }
+
+        const currentStartDate = startPicker ? startPicker.value : getDateFromMonths(baseDate, parseInt(startSlider.value));
+        if (dateVal < currentStartDate) {
+          dateVal = currentStartDate;
+        }
+
+        let monthsOffset = calculateTotalMonths(baseDate, dateVal);
+        monthsOffset = Math.max(0, Math.min(totalMonths, monthsOffset));
+
+        endSlider.value = monthsOffset;
+        updateSliderColorsAndValues(null, null, dateVal);
+      });
+    }
 
     updateSliderColorsAndValues();
   }
@@ -182,7 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const startSlider = document.getElementById(startSliderId);
     const endSlider = document.getElementById(endSliderId);
     if (startSlider && endSlider) {
-      const defaultStart = Math.max(0, totalMonths - 12);
+      const defaultStart = 0; // Default to full period of the dataset
       startSlider.value = defaultStart;
       endSlider.value = totalMonths;
       
