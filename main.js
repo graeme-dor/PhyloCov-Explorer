@@ -515,54 +515,62 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const reader = new FileReader();
       reader.onload = function(e) {
-        const text = e.target.result;
-        let points = [];
-        
-        const extension = file.name.split('.').pop().toLowerCase();
-        if (extension === "json" || extension === "geojson" || text.trim().startsWith("{")) {
-          points = parseGeoJsonCoordinates(text);
-        } else if (extension === "csv" || extension === "tsv") {
-          points = parseCsvCoordinates(text);
-        } else {
-          points = parseBeastCoordinates(text);
-        }
+        try {
+          const text = e.target.result;
+          let points = [];
+          
+          const extension = file.name.split('.').pop().toLowerCase();
+          if (extension === "json" || extension === "geojson" || text.trim().startsWith("{")) {
+            points = parseGeoJsonCoordinates(text);
+          } else if (extension === "csv" || extension === "tsv") {
+            points = parseCsvCoordinates(text);
+          } else {
+            points = parseBeastCoordinates(text);
+          }
 
-        if (points.length === 0) {
-          if (statusText) {
-            let errorMsg = "Error: No coordinates found. Check format.";
-            if (extension !== "json" && extension !== "geojson" && extension !== "csv" && extension !== "tsv") {
-              const matches = text.match(/\[&([^\]]+)\]/g);
-              if (matches) {
-                const keys = new Set();
-                const kvRegex = /([a-zA-Z_0-9%.]+)\s*=/g;
-                for (const m of matches) {
-                  let kv;
-                  while ((kv = kvRegex.exec(m)) !== null) {
-                    keys.add(kv[1]);
+          if (points.length === 0) {
+            if (statusText) {
+              let errorMsg = "Error: The tree file does not contain lat/lon location info. Please ensure you are selecting a continuous phylogeographic tree file (e.g. BEAST Nexus/Newick with 'location' annotations).";
+              if (extension !== "json" && extension !== "geojson" && extension !== "csv" && extension !== "tsv") {
+                const matches = text.match(/\[&([^\]]+)\]/g);
+                if (matches) {
+                  const keys = new Set();
+                  const kvRegex = /([a-zA-Z_0-9%.]+)\s*=/g;
+                  for (const m of matches) {
+                    let kv;
+                    while ((kv = kvRegex.exec(m)) !== null) {
+                      keys.add(kv[1]);
+                    }
+                  }
+                  if (keys.size > 0) {
+                    const detected = Array.from(keys).slice(0, 10).join(", ");
+                    errorMsg += ` (Detected metadata fields: ${detected}${keys.size > 10 ? '...' : ''})`;
                   }
                 }
-                if (keys.size > 0) {
-                  const detected = Array.from(keys).slice(0, 10).join(", ");
-                  errorMsg += ` (Detected keys: ${detected}${keys.size > 10 ? '...' : ''})`;
-                }
               }
+              statusText.textContent = errorMsg;
+              statusText.style.color = "#f85149";
             }
-            statusText.textContent = errorMsg;
+            return;
+          }
+
+          uploadedPoints = points;
+          
+          if (statusText) {
+            statusText.textContent = `Successfully parsed ${points.length} locations.`;
+            statusText.style.color = "var(--accent-secondary)";
+          }
+
+          const swap = swapCheckbox ? swapCheckbox.checked : false;
+          if (onParsedCallback) {
+            onParsedCallback(points, swap);
+          }
+        } catch (error) {
+          if (statusText) {
+            statusText.textContent = "Error parsing file. Please ensure it is a valid coordinate CSV or a continuous BEAST phylogeographic tree file.";
             statusText.style.color = "#f85149";
           }
-          return;
-        }
-
-        uploadedPoints = points;
-        
-        if (statusText) {
-          statusText.textContent = `Successfully parsed ${points.length} locations.`;
-          statusText.style.color = "var(--accent-secondary)";
-        }
-
-        const swap = swapCheckbox ? swapCheckbox.checked : false;
-        if (onParsedCallback) {
-          onParsedCallback(points, swap);
+          console.error("File parsing error:", error);
         }
       };
 
@@ -2208,6 +2216,50 @@ document.addEventListener("DOMContentLoaded", () => {
             glmSubmitBtn.style.opacity = "1";
             glmSubmitBtn.style.cursor = "pointer";
           }
+        });
+      }
+
+      // Switcher Tab Interaction Logic
+      const pipelineTabs = document.querySelectorAll(".pipeline-tab");
+      const continuousContainer = document.getElementById("continuous_controls_container");
+      const discreteContainer = document.getElementById("discrete_controls_container");
+
+      if (pipelineTabs.length > 0) {
+        pipelineTabs.forEach(tab => {
+          tab.addEventListener("click", () => {
+            pipelineTabs.forEach(t => {
+              t.classList.remove("active");
+              t.style.background = "transparent";
+              t.style.color = "var(--text-muted)";
+            });
+
+            tab.classList.add("active");
+            tab.style.background = "var(--accent-color)";
+            tab.style.color = "white";
+
+            const selectedPipeline = tab.dataset.pipeline;
+            activePipeline = selectedPipeline;
+
+            if (selectedPipeline === "continuous") {
+              if (continuousContainer) continuousContainer.style.display = "block";
+              if (discreteContainer) discreteContainer.style.display = "none";
+              
+              if (uploadedBBoxLayer) uploadedBBoxLayer.addTo(map);
+              if (uploadedMarkersLayer) uploadedMarkersLayer.addTo(map);
+              if (glmUploadedBBoxLayer) map.removeLayer(glmUploadedBBoxLayer);
+              if (glmUploadedMarkersLayer) map.removeLayer(glmUploadedMarkersLayer);
+            } else {
+              if (continuousContainer) continuousContainer.style.display = "none";
+              if (discreteContainer) discreteContainer.style.display = "block";
+
+              if (glmUploadedBBoxLayer) glmUploadedBBoxLayer.addTo(map);
+              if (glmUploadedMarkersLayer) glmUploadedMarkersLayer.addTo(map);
+              if (uploadedBBoxLayer) map.removeLayer(uploadedBBoxLayer);
+              if (uploadedMarkersLayer) map.removeLayer(uploadedMarkersLayer);
+            }
+
+            triggerMapUpdate();
+          });
         });
       }
     }
