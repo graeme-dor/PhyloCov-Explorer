@@ -1060,6 +1060,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let glmParsedDatesSpan = null;
     let glmUploadedMarkersLayer = null;
     let glmUploadedBBoxLayer = null;
+    let glmDatasetSelect = null;
 
     let isDrawingMode = false;
     let drawStartLatLng = null;
@@ -1877,7 +1878,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const glmFileInput = document.getElementById("glm_file_input");
       const glmUploadText = document.getElementById("glm_upload_text");
       const glmUploadStatus = document.getElementById("glm_upload_status");
-      const glmDatasetSelect = document.getElementById("glm_dataset_select");
+      glmDatasetSelect = document.getElementById("glm_dataset_select");
       const glmSubmitBtn = document.getElementById("glmSubmitBtn");
       const glmStatusPanel = document.getElementById("glmStatusPanel");
       const glmStatusDot = document.getElementById("glmStatusDot");
