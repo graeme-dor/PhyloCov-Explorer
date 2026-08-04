@@ -41,47 +41,184 @@
     </header>
 
     <main class="content-flow">
-
-
+      <!-- Category 1: Climate & Precipitation -->
       <section class="content-section fade-in-section is-visible">
         <div class="container" style="max-width: 1200px; margin: 0 auto;">
-          <h2>Climate Datasets</h2>
-          <p>Explore the high-resolution climate covariates currently integrated within the PhyloCov extraction platform. These layers provide crucial data on temperature, precipitation, and humidity for your models.</p>
+          <h2>Climate & Precipitation</h2>
+          <p class="section-lead" style="color: #8b949e; margin-bottom: 2rem; font-size: 1.1rem;">High-resolution atmospheric and hydrological layers providing temperature, precipitation, and moisture covariates.</p>
           
           <div class="dataset-grid">
+            <!-- CHIRPS Card -->
+            <article class="dataset-card">
+              <img src="/chirp_precipitation.png" alt="CHIRPS Precipitation Map" class="dataset-thumb">
+              <div class="dataset-content">
+                <span class="dataset-tag">Precipitation / Daily</span>
+                <h3 class="dataset-title">CHIRPS Daily Precipitation</h3>
+                <div class="dataset-meta">
+                  <strong>Bands:</strong> precipitation (Rainfall mm/day)<br>
+                  <strong>Resolution:</strong> 5,566 meters (~0.05°)<br>
+                  <strong>Source:</strong> UCSB / Climate Hazards Center
+                </div>
+                <p class="dataset-desc">Climate Hazards Group InfraRed Precipitation with Station data (CHIRPS) is a 30+ year quasi-global rainfall dataset. It merges satellite imagery with in-situ station data to create gridded precipitation time series ideal for trend analysis.</p>
+                <a href="https://developers.google.com/earth-engine/datasets/catalog/UCSB-CHG_CHIRPS_DAILY" target="_blank" class="dataset-btn">View in GEE Catalog ↗</a>
+              </div>
+            </article>
+
             <!-- ERA5 Card -->
             <article class="dataset-card">
               <img src="/era5_temperature.png" alt="ERA5 Temperature Map" class="dataset-thumb">
               <div class="dataset-content">
-                <span class="dataset-tag">Climate / Atmosphere</span>
+                <span class="dataset-tag">Atmosphere / Daily</span>
                 <h3 class="dataset-title">ERA5 Daily Aggregates</h3>
                 <div class="dataset-meta">
-                  <strong>Bands:</strong> Temperature, Precipitation, Humidity<br>
-                  <strong>Resolution:</strong> 27830 meters<br>
+                  <strong>Bands:</strong> mean_2m_air_temperature, total_precipitation, dewpoint_2m_temperature<br>
+                  <strong>Resolution:</strong> 27,830 meters (~0.25°)<br>
                   <strong>Source:</strong> ECMWF / Copernicus
                 </div>
-                <p class="dataset-desc">ERA5 is the fifth generation ECMWF reanalysis. It provides hourly estimates of a large number of atmospheric, land and oceanic climate variables. This dataset is aggregated to daily resolutions within PhyloCov.</p>
+                <p class="dataset-desc">ERA5 is the fifth generation ECMWF atmospheric reanalysis of the global climate. It combines model data with observations from across the world to provide daily temperature, humidity, and atmospheric metrics.</p>
                 <a href="https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_DAILY" target="_blank" class="dataset-btn">View in GEE Catalog ↗</a>
               </div>
             </article>
 
-            <!-- CHIRP Card -->
+            <!-- ERA5 Land Card -->
             <article class="dataset-card">
-              <img src="/chirp_precipitation.png" alt="CHIRP Precipitation Map" class="dataset-thumb">
+              <img src="/era5_land_thumbnail.png" alt="ERA5 Land Reanalysis Map" class="dataset-thumb">
               <div class="dataset-content">
-                <span class="dataset-tag">Climate / Precipitation</span>
-                <h3 class="dataset-title">CHIRPS Daily Precipitation</h3>
+                <span class="dataset-tag">Land Climate / Monthly</span>
+                <h3 class="dataset-title">ERA5-Land Monthly Aggregates</h3>
                 <div class="dataset-meta">
-                  <strong>Bands:</strong> Precipitation<br>
-                  <strong>Resolution:</strong> 5566 meters<br>
-                  <strong>Source:</strong> UCSB / CHC
+                  <strong>Bands:</strong> temperature_2m, total_precipitation_sum, dewpoint_temperature_2m<br>
+                  <strong>Resolution:</strong> 11,132 meters (~0.1°)<br>
+                  <strong>Source:</strong> ECMWF / Copernicus
                 </div>
-                <p class="dataset-desc">Climate Hazards Group InfraRed Precipitation with Station data (CHIRPS) is a 30+ year quasi-global rainfall dataset. It incorporates satellite imagery with in-situ station data to create gridded rainfall time series.</p>
-                <a href="https://developers.google.com/earth-engine/datasets/catalog/UCSB-CHG_CHIRPS_DAILY" target="_blank" class="dataset-btn">View in GEE Catalog ↗</a>
+                <p class="dataset-desc">A high-resolution dataset focusing on the land surface. It provides enhanced monthly temperature and water cycle parameters, offering greater spatial detail than standard ERA5 for land-based ecological studies.</p>
+                <a href="https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_LAND_MONTHLY_AGGR" target="_blank" class="dataset-btn">View in GEE Catalog ↗</a>
               </div>
             </article>
           </div>
+        </div>
+      </section>
+
+      <!-- Category 2: Vegetation & Land Surface -->
+      <section class="content-section fade-in-section is-visible" style="margin-top: 4rem;">
+        <div class="container" style="max-width: 1200px; margin: 0 auto;">
+          <h2>Vegetation & Land Surface</h2>
+          <p class="section-lead" style="color: #8b949e; margin-bottom: 2rem; font-size: 1.1rem;">Satellite observations tracking canopy greenness, land surface temperature anomalies, and thermal signatures.</p>
           
+          <div class="dataset-grid">
+            <!-- MODIS NDVI Card -->
+            <article class="dataset-card">
+              <img src="/modis_ndvi_thumbnail.png" alt="MODIS NDVI Map" class="dataset-thumb">
+              <div class="dataset-content">
+                <span class="dataset-tag">Vegetation / 16-Day</span>
+                <h3 class="dataset-title">MODIS NDVI (MOD13Q1)</h3>
+                <div class="dataset-meta">
+                  <strong>Bands:</strong> NDVI (Normalized Difference Vegetation Index)<br>
+                  <strong>Resolution:</strong> 250 meters<br>
+                  <strong>Source:</strong> NASA / USGS LP DAAC
+                </div>
+                <p class="dataset-desc">Provides consistent spatial and temporal comparisons of global vegetation conditions. Used for monitoring photosynthetic activity, canopy density, forest health, and land cover dynamics over time.</p>
+                <a href="https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD13Q1" target="_blank" class="dataset-btn">View in GEE Catalog ↗</a>
+              </div>
+            </article>
+
+            <!-- MODIS LST Card -->
+            <article class="dataset-card">
+              <img src="/era5_temperature.png" alt="MODIS LST Map" class="dataset-thumb" style="filter: hue-rotate(90deg);">
+              <div class="dataset-content">
+                <span class="dataset-tag">Land Temperature / Monthly</span>
+                <h3 class="dataset-title">MODIS Land Surface Temp (LST)</h3>
+                <div class="dataset-meta">
+                  <strong>Bands:</strong> LST_Day_1km, LST_Night_1km (aggregated from MOD21C3)<br>
+                  <strong>Resolution:</strong> 5,600 meters (~0.05°)<br>
+                  <strong>Source:</strong> NASA / USGS LP DAAC
+                </div>
+                <p class="dataset-desc">Monthly land surface temperature (LST) values, split into Daytime and Nighttime bands. Excellent for calculating diurnal temperature ranges, thermal stress, and micro-climate patterns.</p>
+                <a href="https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD21C3" target="_blank" class="dataset-btn">View in GEE Catalog ↗</a>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- Category 3: Elevation & Topography -->
+      <section class="content-section fade-in-section is-visible" style="margin-top: 4rem;">
+        <div class="container" style="max-width: 1200px; margin: 0 auto;">
+          <h2>Elevation & Topography</h2>
+          <p class="section-lead" style="color: #8b949e; margin-bottom: 2rem; font-size: 1.1rem;">High-resolution digital elevation models capturing physical geography, terrain slopes, and mountainous barriers.</p>
+          
+          <div class="dataset-grid">
+            <!-- SRTM Card -->
+            <article class="dataset-card">
+              <img src="/srtm_elevation_thumbnail.png" alt="SRTM Elevation Map" class="dataset-thumb">
+              <div class="dataset-content">
+                <span class="dataset-tag">Elevation / Static</span>
+                <h3 class="dataset-title">SRTM Elevation (30m)</h3>
+                <div class="dataset-meta">
+                  <strong>Bands:</strong> elevation (Meters above sea level)<br>
+                  <strong>Resolution:</strong> 30 meters<br>
+                  <strong>Source:</strong> NASA / USGS
+                </div>
+                <p class="dataset-desc">The Shuttle Radar Topography Mission (SRTM) provides near-global digital elevation data. Critical for environmental studies mapping altitude barriers, river watersheds, terrain aspect, and slope gradients.</p>
+                <a href="https://developers.google.com/earth-engine/datasets/catalog/USGS_SRTMGL1_003" target="_blank" class="dataset-btn">View in GEE Catalog ↗</a>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- Category 4: Suggested Custom GEE Assets -->
+      <section class="content-section fade-in-section is-visible" style="margin-top: 4rem; padding-bottom: 5rem;">
+        <div class="container" style="max-width: 1200px; margin: 0 auto;">
+          <h2>Suggested Custom GEE Assets</h2>
+          <p class="section-lead" style="color: #8b949e; margin-bottom: 2rem; font-size: 1.1rem;">You are not limited to presets! Copy the Asset ID of any public dataset in the Google Earth Engine Catalog and load it directly into PhyloCov.</p>
+          
+          <div class="dataset-grid">
+            <!-- Sentinel-2 MSI Card -->
+            <article class="dataset-card">
+              <div class="dataset-content" style="border-top: 4px solid var(--accent-secondary); padding-top: 1.5rem;">
+                <span class="dataset-tag">Multispectral / 5-Day</span>
+                <h3 class="dataset-title">Sentinel-2 MSI (10m)</h3>
+                <div class="dataset-meta" style="margin-bottom: 1rem;">
+                  <strong>Asset ID:</strong> <code>COPERNICUS/S2_SR_HARMONIZED</code><br>
+                  <strong>Resolution:</strong> 10 meters<br>
+                  <strong>Bands:</strong> B2 (Blue), B3 (Green), B4 (Red), B8 (NIR)
+                </div>
+                <p class="dataset-desc" style="font-size: 0.9rem; line-height: 1.5; margin-bottom: 1.5rem;">High-resolution optical multispectral imagery. Perfect for fine-scale crop mapping, surface water detection, forest logging, or urban growth tracing.</p>
+                <a href="https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR_HARMONIZED" target="_blank" class="dataset-btn">Copy Asset ID & View ↗</a>
+              </div>
+            </article>
+
+            <!-- Landsat Card -->
+            <article class="dataset-card">
+              <div class="dataset-content" style="border-top: 4px solid var(--accent-secondary); padding-top: 1.5rem;">
+                <span class="dataset-tag">Thermal & Optical / 8-Day</span>
+                <h3 class="dataset-title">Landsat 8 OLI/TIRS (30m)</h3>
+                <div class="dataset-meta" style="margin-bottom: 1rem;">
+                  <strong>Asset ID:</strong> <code>LANDSAT/LC08/C02/T1_L2</code><br>
+                  <strong>Resolution:</strong> 30 meters<br>
+                  <strong>Bands:</strong> SR_B4 (Red), SR_B5 (NIR), ST_B10 (Surface Temp)
+                </div>
+                <p class="dataset-desc" style="font-size: 0.9rem; line-height: 1.5; margin-bottom: 1.5rem;">Offers decades of historical consistency. Useful for decadal forest loss tracking, regional surface heating, and water resource changes.</p>
+                <a href="https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C02_T1_L2" target="_blank" class="dataset-btn">Copy Asset ID & View ↗</a>
+              </div>
+            </article>
+
+            <!-- ESA WorldCover Card -->
+            <article class="dataset-card">
+              <div class="dataset-content" style="border-top: 4px solid var(--accent-secondary); padding-top: 1.5rem;">
+                <span class="dataset-tag">Land Cover / Annual</span>
+                <h3 class="dataset-title">ESA WorldCover 10m (Static)</h3>
+                <div class="dataset-meta" style="margin-bottom: 1rem;">
+                  <strong>Asset ID:</strong> <code>ESA/WorldCover/v100/2020</code><br>
+                  <strong>Resolution:</strong> 10 meters<br>
+                  <strong>Bands:</strong> Map (Land cover classification classes)
+                </div>
+                <p class="dataset-desc" style="font-size: 0.9rem; line-height: 1.5; margin-bottom: 1.5rem;">Global land cover map providing 11 classes (e.g. trees, cropland, grassland, water, built-up) based on Sentinel-1 and Sentinel-2 data.</p>
+                <a href="https://developers.google.com/earth-engine/datasets/catalog/ESA_WorldCover_v100_2020" target="_blank" class="dataset-btn">Copy Asset ID & View ↗</a>
+              </div>
+            </article>
+          </div>
         </div>
       </section>
     </main>
