@@ -264,7 +264,7 @@ document.addEventListener("DOMContentLoaded", () => {
       endSlider.min = 0;
       endSlider.max = totalMonths;
 
-      const defaultStart = 0; // Default to full period of the dataset
+      const defaultStart = Math.max(0, totalMonths - 12); // Default to the last 12 months (most recent year)
       startSlider.value = defaultStart;
       endSlider.value = totalMonths;
       
@@ -1743,6 +1743,184 @@ document.addEventListener("DOMContentLoaded", () => {
           mapExportBtn.disabled = false;
           mapExportBtn.textContent = "Start Backend Export";
         }
+      }
+      
+      // ==========================================
+      // PIPELINE 2: DISCRETE PHYLODYNAMICS (GLM)
+      // ==========================================
+      const glmDropzone = document.getElementById("glm_upload_dropzone");
+      const glmFileInput = document.getElementById("glm_file_input");
+      const glmUploadText = document.getElementById("glm_upload_text");
+      const glmUploadStatus = document.getElementById("glm_upload_status");
+      const glmDatasetSelect = document.getElementById("glm_dataset_select");
+      const glmSubmitBtn = document.getElementById("glmSubmitBtn");
+      const glmStatusPanel = document.getElementById("glmStatusPanel");
+      const glmStatusDot = document.getElementById("glmStatusDot");
+      const glmStatusText = document.getElementById("glmStatusText");
+      const glmStatusMessage = document.getElementById("glmStatusMessage");
+      const glmDownloadContainer = document.getElementById("glmDownloadContainer");
+      const glmDownloadLink = document.getElementById("glmDownloadLink");
+      const glmExtractionForm = document.getElementById("glmExtractionForm");
+
+      let selectedGLMFile = null;
+
+      if (glmDropzone && glmFileInput) {
+        // Trigger file input click
+        glmDropzone.addEventListener("click", () => {
+          glmFileInput.click();
+        });
+
+        // Prevent defaults for drag events
+        ["dragenter", "dragover", "dragleave", "drop"].forEach(eventName => {
+          glmDropzone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }, false);
+        });
+
+        // Add highlight classes
+        ["dragenter", "dragover"].forEach(eventName => {
+          glmDropzone.addEventListener(eventName, () => {
+            glmDropzone.style.borderColor = "var(--accent-color)";
+            glmDropzone.style.background = "rgba(88, 166, 255, 0.05)";
+          }, false);
+        });
+
+        ["dragleave", "drop"].forEach(eventName => {
+          glmDropzone.addEventListener(eventName, () => {
+            glmDropzone.style.borderColor = "rgba(255,255,255,0.15)";
+            glmDropzone.style.background = "rgba(255,255,255,0.01)";
+          }, false);
+        });
+
+        // Handle drop
+        glmDropzone.addEventListener("drop", (e) => {
+          const dt = e.dataTransfer;
+          const files = dt.files;
+          if (files.length > 0) {
+            handleGLMFileSelection(files[0]);
+          }
+        });
+
+        // Handle file select
+        glmFileInput.addEventListener("change", (e) => {
+          if (e.target.files.length > 0) {
+            handleGLMFileSelection(e.target.files[0]);
+          }
+        });
+      }
+
+      function handleGLMFileSelection(file) {
+        if (!file.name.endsWith(".csv")) {
+          glmUploadStatus.textContent = "Error: Please upload a valid CSV file.";
+          glmUploadStatus.style.color = "#f85149";
+          glmUploadStatus.style.display = "block";
+          selectedGLMFile = null;
+          updateGLMSubmitBtnState();
+          return;
+        }
+
+        selectedGLMFile = file;
+        glmUploadText.textContent = `Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        glmUploadStatus.style.display = "none";
+        updateGLMSubmitBtnState();
+      }
+
+      function updateGLMSubmitBtnState() {
+        if (selectedGLMFile && glmDatasetSelect && glmDatasetSelect.value) {
+          glmSubmitBtn.disabled = false;
+          glmSubmitBtn.style.opacity = "1";
+          glmSubmitBtn.style.cursor = "pointer";
+        } else {
+          glmSubmitBtn.disabled = true;
+          glmSubmitBtn.style.opacity = "0.5";
+          glmSubmitBtn.style.cursor = "not-allowed";
+        }
+      }
+
+      if (glmDatasetSelect) {
+        glmDatasetSelect.addEventListener("change", () => {
+          updateGLMSubmitBtnState();
+          
+          // Update info text
+          const infoMap = {
+            "chirps": "Native Resolution: ~5.5km | Temporal: Daily (Precipitation)",
+            "era5": "Native Resolution: ~27.8km | Temporal: Daily (Temperature)",
+            "era5_land_monthly": "Native Resolution: ~11.1km | Temporal: Monthly (Temperature)",
+            "modis_ndvi": "Native Resolution: ~250m | Temporal: 16-day (Vegetation Index)",
+            "modis_lst_day": "Native Resolution: ~5.6km | Temporal: Monthly (Land Surface Temp Day)",
+            "modis_lst_night": "Native Resolution: ~5.6km | Temporal: Monthly (Land Surface Temp Night)",
+            "srtm": "Native Resolution: ~30m | Temporal: Static (Elevation)"
+          };
+          const infoText = document.getElementById("glmDatasetInfo");
+          if (infoText) {
+            infoText.textContent = infoMap[glmDatasetSelect.value] || "Selected dataset details";
+          }
+        });
+      }
+
+      if (glmExtractionForm) {
+        glmExtractionForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (!selectedGLMFile) return;
+
+          const dataset = glmDatasetSelect.value;
+          if (!dataset) return;
+
+          // Prepare UI for loading
+          glmSubmitBtn.disabled = true;
+          glmSubmitBtn.textContent = "Extracting...";
+          glmSubmitBtn.style.opacity = "0.5";
+          glmSubmitBtn.style.cursor = "not-allowed";
+
+          glmStatusPanel.style.display = "block";
+          glmStatusDot.style.backgroundColor = "#58a6ff";
+          glmStatusText.textContent = "EXTRACTING";
+          glmStatusMessage.textContent = "Uploading CSV and querying GEE at coordinates and dates (this may take a few seconds)...";
+          glmDownloadContainer.style.display = "none";
+
+          const formData = new FormData();
+          formData.append("file", selectedGLMFile);
+          formData.append("dataset", dataset);
+
+          try {
+            const response = await fetch(`${BACKEND_URL}/extract`, {
+              method: "POST",
+              body: formData
+            });
+
+            if (!response.ok) {
+              const errData = await response.json();
+              throw new Error(errData.detail || "Extraction failed");
+            }
+
+            const blob = await response.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+
+            // Configure download link
+            glmDownloadLink.href = downloadUrl;
+            // Set download filename
+            const origName = selectedGLMFile.name.replace(".csv", "");
+            glmDownloadLink.download = `${origName}_enriched_${dataset}.csv`;
+
+            // Update UI success state
+            glmStatusDot.style.backgroundColor = "#238636";
+            glmStatusText.textContent = "COMPLETED";
+            glmStatusMessage.textContent = "Points covariate extraction successfully completed!";
+            glmDownloadContainer.style.display = "block";
+
+          } catch (error) {
+            console.error("GLM Extraction Error:", error);
+            glmStatusDot.style.backgroundColor = "#f85149";
+            glmStatusText.textContent = "ERROR";
+            glmStatusMessage.textContent = error.message;
+          } finally {
+            glmSubmitBtn.disabled = false;
+            glmSubmitBtn.textContent = "Extract Point Covariates";
+            glmSubmitBtn.style.opacity = "1";
+            glmSubmitBtn.style.cursor = "pointer";
+          }
+        });
       }
     }
   }

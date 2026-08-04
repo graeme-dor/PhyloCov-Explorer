@@ -549,20 +549,65 @@
         </div>
       </section>
 
-      <!-- Section 3: Discrete Phylodynamics (Upcoming Feature) -->
-      <section class="content-section text-content fade-in-section">
+      <!-- Section 3: Discrete Phylodynamics (Interactive Extraction) -->
+      <section class="content-section interactive-app fade-in-section" id="glm_extraction_section" style="padding-bottom: 3rem;">
         <div class="container">
-          <h2>Pipeline 2: Discrete Phylodynamics (GLM)</h2>
-          <p>The second pipeline allows users to input a point or polygon shapefile to extract covariate data formatted specifically for discrete phylodynamic approaches using Generalized Linear Models (GLM) in software like BEAST.</p>
-          
-          <h3 style="font-size: 1.5rem; margin-top: 2rem; margin-bottom: 1rem; color: #c9d1d9;">GLM Data Format Integration</h3>
-          <p>In this context, the terms <em>predictor</em> and <em>covariate</em> are interchangeable. PhyloCov generates predictor files as comma-separated value (CSV) matrices matching the exact format required by BEAST for setting up GLM-CTMC location traits:</p>
-          <ul style="padding-left: 1.5rem; margin-bottom: 1.5rem;">
-            <li style="color: #8b949e; margin-bottom: 0.75rem; line-height: 1.6;"><strong>Pairwise Predictors:</strong> Output as a square matrix (e.g., flight matrix, intra-continental distance matrix). The different locations serve as alphabetically ordered row and column names, with rows denoting the origin and columns the destination.</li>
-            <li style="color: #8b949e; line-height: 1.6;"><strong>Origin-Destination Predictors:</strong> Output as a two-column table with alphabetically ordered location names mapped to predictor values.</li>
-          </ul>
-          
-          <p>Once extracted, these files can be easily loaded into the "Sites" tab in BEAST by clicking "Setup GLM" and "Import Predictors". Within BEAST, these predictors can be log-transformed and standardized to inform the rates of spread between geographic locations.</p>
+          <div class="app-header">
+            <h2>Pipeline 2: Discrete Phylodynamics (GLM Point Extraction)</h2>
+            <p>Upload a CSV file containing point locations (latitude, longitude, exact dates) to extract corresponding ecological covariate values at those exact coordinates and times, formatted specifically for discrete phylodynamic GLM traits in BEAST.</p>
+          </div>
+
+          <div style="background: var(--bg-color-alt); border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-top: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+            <form id="glmExtractionForm" style="display: flex; flex-direction: column; gap: 1rem;">
+              
+              <div class="form-group">
+                <label style="font-weight: 600; margin-bottom: 0.5rem; display: block;">1. Upload Sample Points CSV</label>
+                <div class="upload-dropzone" id="glm_upload_dropzone" style="padding: 2rem; border: 2px dashed rgba(255,255,255,0.15); border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s ease; background: rgba(255,255,255,0.01);">
+                  <span id="glm_upload_text">Drag & drop your CSV file here, or click to browse</span>
+                  <input type="file" id="glm_file_input" accept=".csv" style="display: none;">
+                </div>
+                <div id="glm_upload_status" style="font-size: 0.8rem; color: var(--accent-secondary); font-family: monospace; display: none; margin-top: 0.5rem; text-align: left;"></div>
+              </div>
+
+              <div class="form-group">
+                <label for="glm_dataset_select" style="font-weight: 600; margin-bottom: 0.5rem; display: block;">2. Select Environmental Dataset</label>
+                <select id="glm_dataset_select" name="dataset" required style="width: 100%; padding: 0.6rem; font-size: 0.95rem; border-radius: 6px; background: var(--bg-color); color: var(--text-color); border: 1px solid #30363d; outline: none; transition: border-color 0.2s;">
+                  <option value="" disabled selected>Select a dataset...</option>
+                  <option value="chirps">CHIRPS Daily Precipitation</option>
+                  <option value="era5">ERA5 Daily Aggregates</option>
+                  <option value="era5_land_monthly">ERA5-Land Monthly Aggregates</option>
+                  <option value="modis_ndvi">MODIS NDVI (MOD13Q1)</option>
+                  <option value="modis_lst_day">MODIS Monthly LST Day (5.6km)</option>
+                  <option value="modis_lst_night">MODIS Monthly LST Night (5.6km)</option>
+                  <option value="srtm">SRTM Elevation (30m)</option>
+                </select>
+                <div id="glmDatasetInfo" style="font-size: 0.8rem; color: #8b949e; margin-top: 0.35rem; font-family: monospace;">Select a dataset to view details</div>
+              </div>
+
+              <button type="submit" class="export-btn" id="glmSubmitBtn" disabled style="opacity: 0.5; cursor: not-allowed; transition: all 0.2s; font-weight: 600; padding: 0.75rem 1rem;">Extract Point Covariates</button>
+            </form>
+
+            <div class="export-status" id="glmStatusPanel" style="display: none; margin-top: 1.5rem; border-top: 1px solid #30363d; padding-top: 1rem;">
+              <div class="status-indicator" style="display: flex; align-items: center; gap: 8px;">
+                <span class="status-dot" id="glmStatusDot" style="width: 8px; height: 8px; border-radius: 50%; background: #c9d1d9; display: inline-block;"></span>
+                <span id="glmStatusText" style="font-weight: 600; font-size: 0.9rem;">READY</span>
+              </div>
+              <p id="glmStatusMessage" class="status-message" style="font-size: 0.85rem; margin: 0.5rem 0; color: var(--text-muted); text-align: left;"></p>
+              <div id="glmDownloadContainer" style="display: none; margin-top: 0.75rem;">
+                <a href="#" id="glmDownloadLink" class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem; text-decoration: none; display: inline-block; font-weight: 600; border-radius: 6px;" download="enriched_points.csv">Download Enriched CSV ⬇</a>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top: 2rem; text-align: left;">
+            <h3 style="font-size: 1.25rem; margin-bottom: 0.5rem; color: #c9d1d9;">Expected CSV Format</h3>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem;">Your uploaded CSV file should contain location details with headers similar to the following (case-insensitive):</p>
+            <pre style="background: var(--bg-color-alt); border: 1px solid #30363d; padding: 1rem; border-radius: 6px; font-family: monospace; font-size: 0.85rem; color: #8b949e; overflow-x: auto; margin: 0.5rem 0 1.5rem 0; box-shadow: inset 0 2px 8px rgba(0,0,0,0.3);">
+sample_id,latitude,longitude,date
+Sample_001,-33.92,18.42,2021-03-15
+Sample_002,-26.20,28.04,2022-06-20
+Sample_003,-29.85,31.02,2023-01-10</pre>
+          </div>
         </div>
       </section>
 

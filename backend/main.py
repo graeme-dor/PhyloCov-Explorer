@@ -1,5 +1,8 @@
 import uuid
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
+import io
+import csv
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import ee
@@ -846,3 +849,197 @@ def get_map_tiles(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Earth Engine map generation error: {str(e)}")
+
+
+@app.post("/extract")
+async def extract_glm_covariates(
+    file: UploadFile = File(...),
+    dataset: str = Form(...)
+):
+    """
+    Endpoint for Pipeline 2 (Discrete Phylodynamics GLM point extraction).
+    Uploads a CSV, queries GEE at point coordinates and dates, and returns the enriched CSV.
+    """
+    preset_key = dataset.lower()
+    if preset_key not in PRESETS:
+        raise HTTPException(status_code=400, detail=f"Unsupported dataset: {dataset}")
+
+    preset = PRESETS[preset_key]
+    asset_id = preset["asset"]
+    target_band = preset["band"]
+    target_reducer = preset["reducer"]
+    target_multiplier = preset["multiplier"]
+    target_offset = preset["offset"]
+    is_monthly = preset["is_monthly"]
+
+    # Read uploaded CSV
+    contents = await file.read()
+    try:
+        csv_text = contents.decode("utf-8")
+    except Exception:
+        try:
+            csv_text = contents.decode("latin-1")
+        except Exception:
+            raise HTTPException(status_code=400, detail="Failed to decode CSV file. Make sure it is encoded in UTF-8 or Latin-1.")
+
+    f_in = io.StringIO(csv_text)
+    reader = csv.DictReader(f_in)
+    fieldnames = reader.fieldnames
+    if not fieldnames:
+        raise HTTPException(status_code=400, detail="The uploaded CSV has no columns/headers.")
+
+    # Find lat/lon/date headers
+    lat_col = next((c for c in fieldnames if c.lower() in ["latitude", "lat", "lat_deg", "y"]), None)
+    lon_col = next((c for c in fieldnames if c.lower() in ["longitude", "lon", "lng", "lon_deg", "x"]), None)
+    date_col = next((c for c in fieldnames if c.lower() in ["date", "time", "datetime", "year_month_day"]), None)
+
+    if not lat_col or not lon_col:
+        raise HTTPException(
+            status_code=400, 
+            detail="Could not detect latitude and longitude columns. CSV must have columns like 'latitude' and 'longitude'."
+        )
+
+    # For datasets that require dates, check date column
+    requires_date = preset_key != "srtm"
+    if requires_date and not date_col:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Dataset '{dataset}' is temporal and requires a date column in the CSV (e.g. 'date' or 'time')."
+        )
+
+    # Parse rows
+    rows = []
+    features = []
+    for idx, row in enumerate(reader):
+        try:
+            lat = float(row[lat_col])
+            lon = float(row[lon_col])
+        except ValueError:
+            # Skip rows with invalid coordinates
+            continue
+
+        date_val = ""
+        if date_col:
+            date_val = row[date_col].strip()
+
+        rows.append(row)
+        
+        # Create Earth Engine Point Feature
+        geom = ee.Geometry.Point([lon, lat])
+        feature_properties = {
+            "row_idx": idx,
+            "date": date_val
+        }
+        features.append(ee.Feature(geom, feature_properties))
+
+    if not features:
+        raise HTTPException(status_code=400, detail="No rows with valid numeric coordinates found in the CSV.")
+
+    # Query Earth Engine in a single mapped batch
+    fc = ee.FeatureCollection(features)
+
+    # Fetch native scale/resolution
+    native_res = 1000
+    if preset_key == "chirps":
+        native_res = 5566
+    elif preset_key == "era5":
+        native_res = 27830
+    elif preset_key == "era5_land_monthly":
+        native_res = 11132
+    elif preset_key.startswith("modis"):
+        native_res = 250 if preset_key == "modis_ndvi" else 5566
+    elif preset_key == "srtm":
+        native_res = 30
+
+    if preset_key == "srtm":
+        # Static elevation image
+        img = ee.Image(asset_id).select(target_band)
+        if target_multiplier != 1.0:
+            img = img.multiply(target_multiplier)
+        if target_offset != 0.0:
+            img = img.add(target_offset)
+
+        def extract_srtm(feature):
+            val = img.reduceRegion(
+                reducer=ee.Reducer.mean(),
+                geometry=feature.geometry(),
+                scale=native_res
+            ).get(target_band)
+            return feature.set("extracted_val", val)
+
+        extracted_fc = fc.map(extract_srtm)
+    else:
+        # Temporal datasets
+        def extract_temporal(feature):
+            date_str = feature.get("date")
+            date_val = ee.Date(date_str)
+            
+            # Recreate image collection filtering for that exact day/month
+            if is_monthly:
+                img_col = ee.ImageCollection(asset_id).filterDate(date_val, date_val.advance(1, "month"))
+            else:
+                img_col = ee.ImageCollection(asset_id).filterDate(date_val, date_val.advance(1, "day"))
+
+            img = img_col.select(target_band)
+            
+            if target_reducer == "sum":
+                img = img.sum()
+            elif target_reducer == "min":
+                img = img.min()
+            elif target_reducer == "max":
+                img = img.max()
+            elif target_reducer == "median":
+                img = img.median()
+            else:
+                img = img.mean()
+
+            if target_multiplier != 1.0:
+                img = img.multiply(target_multiplier)
+            if target_offset != 0.0:
+                img = img.add(target_offset)
+
+            val = img.reduceRegion(
+                reducer=ee.Reducer.mean(),
+                geometry=feature.geometry(),
+                scale=native_res
+            ).get(target_band)
+
+            return feature.set("extracted_val", val)
+
+        extracted_fc = fc.map(extract_temporal)
+
+    try:
+        results = extracted_fc.getInfo()
+    except Exception as e_ee:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Earth Engine query error: {str(e_ee)}. Please ensure dates are in valid format YYYY-MM-DD."
+        )
+
+    # Match results back to original rows
+    features_out = results.get("features", [])
+    extracted_values = [None] * len(rows)
+    for f in features_out:
+        props = f.get("properties", {})
+        idx = props.get("row_idx")
+        val = props.get("extracted_val")
+        if idx is not None and idx < len(rows):
+            extracted_values[idx] = val
+
+    # Column name for extracted covariate
+    new_col_name = f"{preset_key}_{target_band}"
+
+    # Build output CSV
+    output = io.StringIO()
+    writer_out = csv.DictWriter(output, fieldnames=fieldnames + [new_col_name])
+    writer_out.writeheader()
+    for idx, row in enumerate(rows):
+        row[new_col_name] = extracted_values[idx] if extracted_values[idx] is not None else ""
+        writer_out.writerow(row)
+
+    output.seek(0)
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=extracted_{file.filename}"}
+    )
