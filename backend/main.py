@@ -13,6 +13,7 @@ import google.auth
 from google.auth.transport import requests
 import urllib.request
 import json
+from concurrent.futures import ThreadPoolExecutor
 app = FastAPI(title="PhyloCov Backend Export Service")
 
 # CORS support for future frontend integration
@@ -283,6 +284,42 @@ class ExportRequest(BaseModel):
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+@app.get("/datasets/limits")
+def get_dataset_limits():
+    """
+    Query Earth Engine in parallel for the actual first and last image timestamps in each preset collection.
+    """
+    limits = {}
+    
+    def fetch_limit(key):
+        if key == "srtm":
+            return key, {"start": None, "end": None}
+        info = PRESETS[key]
+        asset_id = info["asset"]
+        try:
+            col = ee.ImageCollection(asset_id)
+            earliest = col.sort("system:time_start", True).first()
+            earliest_time = earliest.get("system:time_start").getInfo()
+            
+            latest = col.sort("system:time_start", False).first()
+            latest_time = latest.get("system:time_start").getInfo()
+            
+            if earliest_time and latest_time:
+                start_date = datetime.utcfromtimestamp(earliest_time / 1000.0).strftime("%Y-%m-%d")
+                end_date = datetime.utcfromtimestamp(latest_time / 1000.0).strftime("%Y-%m-%d")
+                return key, {"start": start_date, "end": end_date}
+        except Exception as e:
+            print(f"Error querying GEE limits for {key}: {e}")
+        return key, None
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = executor.map(fetch_limit, PRESETS.keys())
+        for key, val in results:
+            if val:
+                limits[key] = val
+                
+    return limits
 
 def fetch_stac_metadata(asset_id: str) -> Optional[dict]:
     try:

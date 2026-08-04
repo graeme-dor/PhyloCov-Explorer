@@ -1,6 +1,8 @@
 import './style.css';
 
 document.addEventListener("DOMContentLoaded", () => {
+  const BACKEND_URL = "https://phylocov-export-backend-719941553080.europe-west1.run.app";
+
   const getPastDate = (monthsAgo) => {
     const d = new Date();
     d.setMonth(d.getMonth() - monthsAgo);
@@ -63,6 +65,27 @@ document.addEventListener("DOMContentLoaded", () => {
       rangeText: "Available: Static topography dataset (Feb 2000)"
     }
   };
+
+  // Fetch real-time available date limits from GEE backend
+  async function loadDatasetLimits() {
+    try {
+      const response = await fetch(`${BACKEND_URL}/datasets/limits`);
+      if (response.ok) {
+        const limits = await response.json();
+        for (const [key, limit] of Object.entries(limits)) {
+          if (datasetMetadata[key] && limit) {
+            datasetMetadata[key].start = limit.start;
+            datasetMetadata[key].end = limit.end;
+            if (key === "srtm") continue;
+            datasetMetadata[key].rangeText = `Available: ${limit.start} to ${limit.end} (Real-time GEE)`;
+          }
+        }
+        console.log("Dynamically loaded GEE dataset limits:", datasetMetadata);
+      }
+    } catch (err) {
+      console.warn("Failed to load real-time dataset limits, using fallback estimates:", err);
+    }
+  }
 
   // Calculate total months between two YYYY-MM-DD dates
   function calculateTotalMonths(startStr, endStr) {
@@ -1368,8 +1391,10 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         }
       });
-      // Trigger initial load
-      datasetSelect.dispatchEvent(new Event('change'));
+      // Fetch GEE database limits dynamically first, then trigger initial UI slider setup
+      loadDatasetLimits().then(() => {
+        datasetSelect.dispatchEvent(new Event('change'));
+      });
     }
 
     if (mapScaleSelect && mapScaleCustom) {
