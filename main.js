@@ -1028,7 +1028,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (mapElement && typeof L !== "undefined") {
     // Initialize Leaflet Map
     const map = L.map("map", {
-      zoomControl: false // Custom position later if needed
+      zoomControl: false,
+      scrollWheelZoom: false
     }).setView([20, 0], 2); // Default center (Global)
 
     // Add Dark Base Map (CartoDB Dark Matter)
