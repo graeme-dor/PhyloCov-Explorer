@@ -1,7 +1,15 @@
 import './style.css';
 
 document.addEventListener("DOMContentLoaded", () => {
-  const today = new Date().toISOString().split('T')[0];
+  const getPastDate = (monthsAgo) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - monthsAgo);
+    return d.toISOString().split('T')[0];
+  };
+
+  const era5End = getPastDate(3);
+  const modisEnd = getPastDate(1);
+  const chirpsEnd = getPastDate(2);
   
   // Shared Dataset Metadata
   const datasetMetadata = {
@@ -9,45 +17,44 @@ document.addEventListener("DOMContentLoaded", () => {
       res: 5566, 
       text: "Native Resolution: ~5.5km | Temporal: Daily",
       start: "1981-01-01",
-      end: today,
-      rangeText: "Available: 1981-01-01 to Present"
+      end: chirpsEnd,
+      rangeText: `Available: 1981-01-01 to ${chirpsEnd} (~2 months lag)`
     },
     era5: { 
       res: 27830, 
       text: "Native Resolution: ~27.8km | Temporal: Daily",
       start: "1979-01-01",
-      end: today,
-      rangeText: "Available: 1979-01-01 to Present (~3 months lag)"
+      end: era5End,
+      rangeText: `Available: 1979-01-01 to ${era5End} (~3 months lag)`
     },
     era5_land_monthly: { 
       res: 11132, 
       text: "Native Resolution: ~11.1km | Temporal: Monthly",
       start: "1950-01-01",
-      end: today,
-      rangeText: "Available: 1950-01-01 to Present (~2-3 months lag)"
+      end: era5End,
+      rangeText: `Available: 1950-01-01 to ${era5End} (~2-3 months lag)`
     },
     modis_ndvi: { 
       res: 250, 
       text: "Native Resolution: 250m | Temporal: 16-day",
       start: "2000-02-18",
-      end: today,
-      rangeText: "Available: 2000-02-18 to Present"
+      end: modisEnd,
+      rangeText: `Available: 2000-02-18 to ${modisEnd} (~1 month lag)`
     },
     modis_lst_day: { 
       res: 5600, 
       text: "Native Resolution: ~5.6km | Temporal: Monthly",
       start: "2000-03-05",
-      end: today,
-      rangeText: "Available: 2000-03-05 to Present"
+      end: modisEnd,
+      rangeText: `Available: 2000-03-05 to ${modisEnd} (~1 month lag)`
     },
     modis_lst_night: { 
       res: 5600, 
       text: "Native Resolution: ~5.6km | Temporal: Monthly",
       start: "2000-03-05",
-      end: today,
-      rangeText: "Available: 2000-03-05 to Present"
+      end: modisEnd,
+      rangeText: `Available: 2000-03-05 to ${modisEnd} (~1 month lag)`
     },
-
     srtm: { 
       res: 30, 
       text: "Native Resolution: 30m | Temporal: Static",
