@@ -1032,6 +1032,14 @@ document.addEventListener("DOMContentLoaded", () => {
       scrollWheelZoom: false
     }).setView([20, 0], 2); // Default center (Global)
 
+    function getMapPadding(basePadding = 40) {
+      const isMobile = window.innerWidth <= 768;
+      return {
+        paddingTopLeft: [isMobile ? basePadding : 420, basePadding],
+        paddingBottomRight: [basePadding, basePadding]
+      };
+    }
+
     // Add Dark Base Map (CartoDB Dark Matter)
     L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
@@ -1163,7 +1171,7 @@ document.addEventListener("DOMContentLoaded", () => {
         map.fitBounds([
           [bbox.minLat, bbox.minLon],
           [bbox.maxLat, bbox.maxLon]
-        ], { padding: [40, 40] });
+        ], getMapPadding(40));
         
         currentCustomBBox = bbox;
         
@@ -1641,7 +1649,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Auto-zoom to bounds if returned
         if (data.bounds) {
-          map.fitBounds(data.bounds, { padding: [20, 20], maxZoom: 8 });
+          map.fitBounds(data.bounds, {
+            ...getMapPadding(20),
+            maxZoom: 8
+          });
         }
       } catch (error) {
         console.error("Map Update Error:", error);
@@ -2025,7 +2036,10 @@ document.addEventListener("DOMContentLoaded", () => {
             dashArray: "4, 4"
           }).addTo(map);
 
-          map.fitBounds(glmUploadedBBoxLayer.getBounds(), { padding: [40, 40], maxZoom: 10 });
+          map.fitBounds(glmUploadedBBoxLayer.getBounds(), {
+            ...getMapPadding(40),
+            maxZoom: 10
+          });
         }
       }
 
