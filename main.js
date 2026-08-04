@@ -152,7 +152,7 @@ document.addEventListener("DOMContentLoaded", () => {
       endPicker.max = maxDate;
     }
 
-    function updateSliderColorsAndValues(e, exactStartDate = null, exactEndDate = null) {
+    function updateSliderColorsAndValues(e, exactStartDate = null, exactEndDate = null, triggerCallback = false) {
       let val1 = parseInt(startSlider.value);
       let val2 = parseInt(endSlider.value);
 
@@ -188,11 +188,16 @@ document.addEventListener("DOMContentLoaded", () => {
         endPicker.value = endDateStr;
       }
 
-      if (onChangeCallback) onChangeCallback(startDateStr, endDateStr);
+      if (triggerCallback && onChangeCallback) {
+        onChangeCallback(startDateStr, endDateStr);
+      }
     }
 
-    startSlider.oninput = updateSliderColorsAndValues;
-    endSlider.oninput = updateSliderColorsAndValues;
+    startSlider.oninput = (e) => updateSliderColorsAndValues(e, null, null, false);
+    endSlider.oninput = (e) => updateSliderColorsAndValues(e, null, null, false);
+    
+    startSlider.onchange = (e) => updateSliderColorsAndValues(e, null, null, true);
+    endSlider.onchange = (e) => updateSliderColorsAndValues(e, null, null, true);
 
     // Listen to manual date changes in start picker
     if (startPicker) {
@@ -216,7 +221,7 @@ document.addEventListener("DOMContentLoaded", () => {
         monthsOffset = Math.max(0, Math.min(totalMonths, monthsOffset));
 
         startSlider.value = monthsOffset;
-        updateSliderColorsAndValues(null, dateVal, null);
+        updateSliderColorsAndValues(null, dateVal, null, true);
       });
     }
 
@@ -242,11 +247,11 @@ document.addEventListener("DOMContentLoaded", () => {
         monthsOffset = Math.max(0, Math.min(totalMonths, monthsOffset));
 
         endSlider.value = monthsOffset;
-        updateSliderColorsAndValues(null, null, dateVal);
+        updateSliderColorsAndValues(null, null, dateVal, true);
       });
     }
 
-    updateSliderColorsAndValues();
+    updateSliderColorsAndValues(null, null, null, true);
   }
 
   function initDatasetSlider(datasetVal, prefix, customDates = null) {
