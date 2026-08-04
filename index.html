@@ -584,6 +584,52 @@
                 <div id="glmDatasetInfo" style="font-size: 0.8rem; color: #8b949e; margin-top: 0.35rem; font-family: monospace;">Select a dataset to view details</div>
               </div>
 
+              <!-- Mode Selection (Exact CSV Dates vs Date Range selection) -->
+              <div class="form-group" id="glm_mode_group" style="display: none; margin-bottom: 0.5rem;">
+                <label style="font-weight: 600; margin-bottom: 0.5rem; display: block;">3. Date Extraction Mode</label>
+                <div style="display: flex; gap: 1rem; margin-top: 0.25rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+                  <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 0.35rem;">
+                    <input type="radio" name="glm_date_mode" value="exact" checked> Use exact CSV dates
+                  </label>
+                  <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 0.35rem;">
+                    <input type="radio" name="glm_date_mode" value="range"> Use date range selection (all points)
+                  </label>
+                </div>
+              </div>
+
+              <!-- Pipeline 2 Date Range Slider (only shown in range mode or srtm dataset hides dates) -->
+              <div class="form-group" id="glm_date_row" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label style="font-weight: 600;">Selected Date Range</label>
+                  <span id="glm_date_range_label" style="font-size: 0.85rem; color: #58a6ff; font-weight: 600; font-family: monospace;">Jan 2020 - Dec 2020</span>
+                </div>
+                
+                <div class="range-slider-container">
+                  <div class="slider-track" id="glm_slider_track"></div>
+                  <input type="range" id="glm_start_slider" min="0" max="100" value="0">
+                  <input type="range" id="glm_end_slider" min="0" max="100" value="100">
+                </div>
+
+                <div class="date-inputs-container">
+                  <div class="date-input-group">
+                    <label for="glm_start_date_input">Start Date</label>
+                    <input type="date" id="glm_start_date_input" class="date-picker-input">
+                  </div>
+                  <div class="date-input-group">
+                    <label for="glm_end_date_input">End Date</label>
+                    <input type="date" id="glm_end_date_input" class="date-picker-input">
+                  </div>
+                </div>
+
+                <!-- Hidden inputs for form sync -->
+                <input type="hidden" id="glm_start_date" value="">
+                <input type="hidden" id="glm_end_date" value="">
+              </div>
+
+              <!-- Banner notice for date extraction mode explanation -->
+              <div id="glm_notice_banner" style="display: none; font-size: 0.85rem; color: var(--accent-secondary); margin-bottom: 0.5rem; border: 1px dashed rgba(88, 166, 255, 0.3); padding: 8px 12px; border-radius: 6px; text-align: left; background: rgba(88, 166, 255, 0.03); line-height: 1.4;">
+              </div>
+
               <button type="submit" class="export-btn" id="glmSubmitBtn" disabled style="opacity: 0.5; cursor: not-allowed; transition: all 0.2s; font-weight: 600; padding: 0.75rem 1rem;">Extract Point Covariates</button>
             </form>
 

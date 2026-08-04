@@ -221,13 +221,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function initDatasetSlider(datasetVal, prefix, customDates = null) {
     const isMap = prefix === "map";
+    const isGLM = prefix === "glm";
     const startSliderId = `${prefix}_start_slider`;
     const endSliderId = `${prefix}_end_slider`;
     const trackId = `${prefix}_slider_track`;
     const labelId = `${prefix}_date_range_label`;
-    const hiddenStartId = isMap ? "map_start_date" : "start_date";
-    const hiddenEndId = isMap ? "map_end_date" : "end_date";
-    const rowId = isMap ? "map_date_row" : "export_date_row";
+    
+    let hiddenStartId, hiddenEndId, rowId;
+    if (isMap) {
+      hiddenStartId = "map_start_date";
+      hiddenEndId = "map_end_date";
+      rowId = "map_date_row";
+    } else if (isGLM) {
+      hiddenStartId = "glm_start_date";
+      hiddenEndId = "glm_end_date";
+      rowId = "glm_date_row";
+    } else {
+      hiddenStartId = "start_date";
+      hiddenEndId = "end_date";
+      rowId = "export_date_row";
+    }
     
     const row = document.getElementById(rowId);
     if (!row) return;
@@ -278,7 +291,7 @@ document.addEventListener("DOMContentLoaded", () => {
         meta.start, 
         totalMonths, 
         () => {
-          if (isMap && typeof triggerMapUpdate === "function") {
+          if ((isMap || isGLM) && typeof triggerMapUpdate === "function") {
             triggerMapUpdate();
           }
         }
@@ -988,6 +1001,13 @@ document.addEventListener("DOMContentLoaded", () => {
     let uploadedBBoxLayer = null;
     let uploadedMarkersLayer = null;
     let currentCustomBBox = null;
+    
+    // Pipeline 2 Discrete GLM state variables
+    let activePipeline = "continuous"; // "continuous" or "discrete"
+    let glmPointsBBox = null;
+    let glmParsedDatesSpan = null;
+    let glmUploadedMarkersLayer = null;
+    let glmUploadedBBoxLayer = null;
 
     let isDrawingMode = false;
     let drawStartLatLng = null;
@@ -1451,43 +1471,89 @@ document.addEventListener("DOMContentLoaded", () => {
     // Reactive Map Update Logic
     async function triggerMapUpdate() {
       if (mapErrorOverlay) mapErrorOverlay.style.display = "none";
-      const dataset = datasetSelect.value;
-      const isCustom = dataset === "custom";
-      const customAsset = mapCustomAssetInput.value.trim();
-
-      if (isCustom && (!customAsset || !mapCustomBandSelect.value)) {
-        return; // Don't trigger map update until custom ID loaded
-      }
-
-      const startDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-01" : startDateInput.value;
-      const endDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-02" : endDateInput.value;
       
-      const roiType = document.querySelector('input[name="roi_type"]:checked').value;
-      const isBBox = (roiType === "bbox_upload" || roiType === "bbox_draw");
-      
-      // Update form required state based on selections
-      if (roiType === "country") {
-        countryInput.required = selectedROIs.size === 0;
-      } else if (roiType === "region") {
-        regionInput.required = selectedROIs.size === 0;
-      } else {
-        countryInput.required = false;
-        regionInput.required = false;
-      }
+      let dataset, startDate, endDate, roiType, roiNames;
+      let isCustom = false;
+      let customAsset = "";
 
-      if (!dataset || (!isCustom && (!startDate || !endDate)) || (!isBBox && selectedROIs.size === 0) || (isBBox && !currentCustomBBox)) {
-        if (currentEELayer) {
-          map.removeLayer(currentEELayer);
-          currentEELayer = null;
+      if (activePipeline === "continuous") {
+        dataset = datasetSelect.value;
+        isCustom = dataset === "custom";
+        customAsset = mapCustomAssetInput.value.trim();
+
+        if (isCustom && (!customAsset || !mapCustomBandSelect.value)) {
+          return; // Don't trigger map update until custom ID loaded
         }
-        return; // Wait until all required fields are filled
-      }
 
-      let roiNames = "";
-      if (isBBox) {
-        roiNames = `${currentCustomBBox.minLat},${currentCustomBBox.minLon},${currentCustomBBox.maxLat},${currentCustomBBox.maxLon}`;
+        startDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-01" : startDateInput.value;
+        endDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-02" : endDateInput.value;
+        
+        roiType = document.querySelector('input[name="roi_type"]:checked').value;
+        const isBBox = (roiType === "bbox_upload" || roiType === "bbox_draw");
+
+        // Update form required state based on selections
+        if (roiType === "country") {
+          countryInput.required = selectedROIs.size === 0;
+        } else if (roiType === "region") {
+          regionInput.required = selectedROIs.size === 0;
+        } else {
+          countryInput.required = false;
+          regionInput.required = false;
+        }
+
+        if (!dataset || (!isCustom && (!startDate || !endDate)) || (!isBBox && selectedROIs.size === 0) || (isBBox && !currentCustomBBox)) {
+          if (currentEELayer) {
+            map.removeLayer(currentEELayer);
+            currentEELayer = null;
+          }
+          return; // Wait until all required fields are filled
+        }
+
+        if (isBBox) {
+          roiNames = `${currentCustomBBox.minLat},${currentCustomBBox.minLon},${currentCustomBBox.maxLat},${currentCustomBBox.maxLon}`;
+        } else {
+          roiNames = Array.from(selectedROIs).join(",");
+        }
       } else {
-        roiNames = Array.from(selectedROIs).join(",");
+        // activePipeline === "discrete" (Pipeline 2)
+        dataset = glmDatasetSelect.value;
+        if (!dataset) {
+          if (currentEELayer) {
+            map.removeLayer(currentEELayer);
+            currentEELayer = null;
+          }
+          return;
+        }
+
+        const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
+        if (dateMode === "exact") {
+          if (glmParsedDatesSpan) {
+            startDate = glmParsedDatesSpan.start;
+            endDate = glmParsedDatesSpan.end;
+          } else {
+            startDate = "";
+            endDate = "";
+          }
+        } else {
+          startDate = document.getElementById("glm_start_date").value;
+          endDate = document.getElementById("glm_end_date").value;
+        }
+
+        if (!startDate || !endDate) {
+          if (currentEELayer) {
+            map.removeLayer(currentEELayer);
+            currentEELayer = null;
+          }
+          return;
+        }
+
+        if (glmPointsBBox) {
+          roiType = "bbox";
+          roiNames = `${glmPointsBBox.minLat},${glmPointsBBox.minLon},${glmPointsBBox.maxLat},${glmPointsBBox.maxLon}`;
+        } else {
+          roiType = "";
+          roiNames = "";
+        }
       }
 
       if (mapLoadingOverlay) mapLoadingOverlay.style.display = "flex";
@@ -1810,6 +1876,137 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
 
+      function parseCSVClientSide(text) {
+        const lines = text.split(/\r?\n/);
+        if (lines.length < 2) return null;
+        
+        const headers = lines[0].split(",").map(h => h.trim().replace(/^["']|["']$/g, ""));
+        const latColIdx = headers.findIndex(h => ["latitude", "lat", "lat_deg", "y"].includes(h.toLowerCase()));
+        const lonColIdx = headers.findIndex(h => ["longitude", "lon", "lng", "lon_deg", "x"].includes(h.toLowerCase()));
+        const dateColIdx = headers.findIndex(h => ["date", "time", "datetime", "year_month_day"].includes(h.toLowerCase()));
+
+        if (latColIdx === -1 || lonColIdx === -1) {
+          return { error: "Could not detect latitude and longitude columns. CSV must contain headers like 'latitude' and 'longitude'." };
+        }
+
+        const points = [];
+        const dates = [];
+
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+          
+          const cols = line.split(",").map(c => c.trim().replace(/^["']|["']$/g, ""));
+          if (cols.length <= Math.max(latColIdx, lonColIdx)) continue;
+
+          const lat = parseFloat(cols[latColIdx]);
+          const lon = parseFloat(cols[lonColIdx]);
+          if (isNaN(lat) || isNaN(lon)) continue;
+
+          points.push({ lat, lon });
+
+          if (dateColIdx !== -1 && cols[dateColIdx]) {
+            const dateStr = cols[dateColIdx].trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+              dates.push(new Date(dateStr));
+            }
+          }
+        }
+
+        if (points.length === 0) {
+          return { error: "No rows with valid numeric coordinates found in the CSV." };
+        }
+
+        // Compute BBox
+        const lats = points.map(p => p.lat);
+        const lons = points.map(p => p.lon);
+        const bbox = {
+          minLat: Math.min(...lats),
+          minLon: Math.min(...lons),
+          maxLat: Math.max(...lats),
+          maxLon: Math.max(...lons)
+        };
+
+        // Compute Date Span
+        let dateSpan = null;
+        if (dates.length > 0) {
+          dates.sort((a, b) => a - b);
+          const minDateStr = dates[0].toISOString().split("T")[0];
+          const maxDateStr = dates[dates.length - 1].toISOString().split("T")[0];
+          dateSpan = { start: minDateStr, end: maxDateStr };
+        }
+
+        return { points, bbox, dateSpan };
+      }
+
+      function renderGLMPointsOnMap(points) {
+        if (glmUploadedBBoxLayer) map.removeLayer(glmUploadedBBoxLayer);
+        if (glmUploadedMarkersLayer) map.removeLayer(glmUploadedMarkersLayer);
+
+        const markers = points.map(p => L.circleMarker([p.lat, p.lon], {
+          radius: 5,
+          color: "#58a6ff",
+          fillColor: "#58a6ff",
+          fillOpacity: 0.8,
+          weight: 1
+        }));
+
+        glmUploadedMarkersLayer = L.layerGroup(markers).addTo(map);
+
+        if (glmPointsBBox) {
+          glmUploadedBBoxLayer = L.rectangle([
+            [glmPointsBBox.minLat, glmPointsBBox.minLon],
+            [glmPointsBBox.maxLat, glmPointsBBox.maxLon]
+          ], {
+            color: "#58a6ff",
+            weight: 1,
+            fillColor: "#58a6ff",
+            fillOpacity: 0.05,
+            dashArray: "4, 4"
+          }).addTo(map);
+
+          map.fitBounds(glmUploadedBBoxLayer.getBounds(), { padding: [40, 40], maxZoom: 10 });
+        }
+      }
+
+      function setGLMDateExtractionMode(mode) {
+        const dateRow = document.getElementById("glm_date_row");
+        const banner = document.getElementById("glm_notice_banner");
+        const dataset = glmDatasetSelect.value;
+        const isSRTM = dataset === "srtm";
+
+        if (isSRTM) {
+          if (dateRow) dateRow.style.display = "none";
+          if (banner) {
+            banner.textContent = "SRTM is a static elevation dataset and does not require a temporal date window.";
+            banner.style.display = "block";
+          }
+          return;
+        }
+
+        if (mode === "exact") {
+          if (dateRow) dateRow.style.display = "none";
+          if (banner) {
+            if (glmParsedDatesSpan) {
+              banner.textContent = `Spreadsheet date column detected (spanning ${glmParsedDatesSpan.start} to ${glmParsedDatesSpan.end}). Covariates will be extracted for each point's exact sample date. Leaflet map is displaying the average over this temporal window.`;
+            } else {
+              banner.textContent = "Extracting covariates for each point's exact date column.";
+            }
+            banner.style.display = "block";
+          }
+        } else {
+          // Range mode
+          if (dateRow) dateRow.style.display = "block";
+          if (banner) {
+            banner.textContent = "Covariates will be extracted as the average over the manually selected date range below for all points.";
+            banner.style.display = "block";
+          }
+          if (dataset) {
+            initDatasetSlider(dataset, "glm");
+          }
+        }
+      }
+
       function handleGLMFileSelection(file) {
         if (!file.name.endsWith(".csv")) {
           glmUploadStatus.textContent = "Error: Please upload a valid CSV file.";
@@ -1820,10 +2017,59 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
-        selectedGLMFile = file;
-        glmUploadText.textContent = `Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
-        glmUploadStatus.style.display = "none";
-        updateGLMSubmitBtnState();
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const text = e.target.result;
+          const result = parseCSVClientSide(text);
+          if (!result || result.error) {
+            glmUploadStatus.textContent = "Error: " + (result?.error || "Failed to parse CSV file.");
+            glmUploadStatus.style.color = "#f85149";
+            glmUploadStatus.style.display = "block";
+            selectedGLMFile = null;
+            updateGLMSubmitBtnState();
+            return;
+          }
+
+          selectedGLMFile = file;
+          glmUploadText.textContent = `Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+          glmUploadStatus.style.display = "none";
+
+          glmPointsBBox = result.bbox;
+          glmParsedDatesSpan = result.dateSpan;
+
+          // Draw markers
+          renderGLMPointsOnMap(result.points);
+
+          // Configure modes
+          const modeGroup = document.getElementById("glm_mode_group");
+          const exactRadio = document.querySelector('input[name="glm_date_mode"][value="exact"]');
+          const rangeRadio = document.querySelector('input[name="glm_date_mode"][value="range"]');
+
+          if (modeGroup) {
+            modeGroup.style.display = "block";
+          }
+
+          if (result.dateSpan) {
+            if (exactRadio) {
+              exactRadio.disabled = false;
+              exactRadio.checked = true;
+            }
+            setGLMDateExtractionMode("exact");
+          } else {
+            if (exactRadio) {
+              exactRadio.disabled = true;
+            }
+            if (rangeRadio) {
+              rangeRadio.checked = true;
+            }
+            setGLMDateExtractionMode("range");
+          }
+
+          updateGLMSubmitBtnState();
+          activePipeline = "discrete";
+          triggerMapUpdate();
+        };
+        reader.readAsText(file);
       }
 
       function updateGLMSubmitBtnState() {
@@ -1838,11 +2084,24 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
+      // Add mode change listeners
+      document.querySelectorAll('input[name="glm_date_mode"]').forEach(radio => {
+        radio.addEventListener("change", (e) => {
+          activePipeline = "discrete";
+          setGLMDateExtractionMode(e.target.value);
+          triggerMapUpdate();
+        });
+      });
+
       if (glmDatasetSelect) {
         glmDatasetSelect.addEventListener("change", () => {
+          activePipeline = "discrete";
           updateGLMSubmitBtnState();
           
-          // Update info text
+          const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
+          setGLMDateExtractionMode(dateMode);
+          triggerMapUpdate();
+          
           const infoMap = {
             "chirps": "Native Resolution: ~5.5km | Temporal: Daily (Precipitation)",
             "era5": "Native Resolution: ~27.8km | Temporal: Daily (Temperature)",
@@ -1858,6 +2117,26 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         });
       }
+
+      // Switch active pipeline to continuous on map inputs interaction
+      [datasetSelect, startDateInput, endDateInput, countryInput, regionInput, mapCustomAssetInput, mapCustomBandSelect].forEach(el => {
+        if (el) {
+          el.addEventListener("change", () => {
+            activePipeline = "continuous";
+            triggerMapUpdate();
+          });
+          el.addEventListener("input", () => {
+            activePipeline = "continuous";
+            triggerMapUpdate();
+          });
+        }
+      });
+      document.querySelectorAll('input[name="roi_type"]').forEach(radio => {
+        radio.addEventListener("change", () => {
+          activePipeline = "continuous";
+          triggerMapUpdate();
+        });
+      });
 
       if (glmExtractionForm) {
         glmExtractionForm.addEventListener("submit", async (e) => {
@@ -1883,6 +2162,16 @@ document.addEventListener("DOMContentLoaded", () => {
           formData.append("file", selectedGLMFile);
           formData.append("dataset", dataset);
 
+          const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
+          if (dateMode === "range" && dataset !== "srtm") {
+            const startVal = document.getElementById("glm_start_date").value;
+            const endVal = document.getElementById("glm_end_date").value;
+            if (startVal && endVal) {
+              formData.append("start_date", startVal);
+              formData.append("end_date", endVal);
+            }
+          }
+
           try {
             const response = await fetch(`${BACKEND_URL}/extract`, {
               method: "POST",
@@ -1899,7 +2188,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
             // Configure download link
             glmDownloadLink.href = downloadUrl;
-            // Set download filename
             const origName = selectedGLMFile.name.replace(".csv", "");
             glmDownloadLink.download = `${origName}_enriched_${dataset}.csv`;
 

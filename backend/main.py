@@ -854,7 +854,9 @@ def get_map_tiles(
 @app.post("/extract")
 async def extract_glm_covariates(
     file: UploadFile = File(...),
-    dataset: str = Form(...)
+    dataset: str = Form(...),
+    start_date: Optional[str] = Form(None),
+    end_date: Optional[str] = Form(None)
 ):
     """
     Endpoint for Pipeline 2 (Discrete Phylodynamics GLM point extraction).
@@ -899,12 +901,13 @@ async def extract_glm_covariates(
             detail="Could not detect latitude and longitude columns. CSV must have columns like 'latitude' and 'longitude'."
         )
 
-    # For datasets that require dates, check date column
+    # For datasets that require dates, check date column or manual parameters
     requires_date = preset_key != "srtm"
-    if requires_date and not date_col:
+    use_manual_range = requires_date and start_date and end_date
+    if requires_date and not use_manual_range and not date_col:
         raise HTTPException(
             status_code=400,
-            detail=f"Dataset '{dataset}' is temporal and requires a date column in the CSV (e.g. 'date' or 'time')."
+            detail=f"Dataset '{dataset}' is temporal and requires either a date column in the CSV (e.g. 'date') or manual start_date and end_date parameters."
         )
 
     # Parse rows
@@ -968,8 +971,30 @@ async def extract_glm_covariates(
             return feature.set("extracted_val", val)
 
         extracted_fc = fc.map(extract_srtm)
+    elif use_manual_range:
+        # Use single date range for all points
+        img = process_gee_image(
+            dataset=dataset,
+            start_date=start_date,
+            end_date=end_date,
+            band=target_band,
+            reducer=target_reducer,
+            multiplier=target_multiplier,
+            offset=target_offset,
+            downsample_large_ranges=False
+        )
+
+        def extract_range(feature):
+            val = img.reduceRegion(
+                reducer=ee.Reducer.mean(),
+                geometry=feature.geometry(),
+                scale=native_res
+            ).get(target_band)
+            return feature.set("extracted_val", val)
+
+        extracted_fc = fc.map(extract_range)
     else:
-        # Temporal datasets
+        # Temporal datasets: extract at exact date of each point
         def extract_temporal(feature):
             date_str = feature.get("date")
             date_val = ee.Date(date_str)
