@@ -1480,7 +1480,7 @@ document.addEventListener("DOMContentLoaded", () => {
     async function triggerMapUpdate() {
       if (mapErrorOverlay) mapErrorOverlay.style.display = "none";
       
-      let dataset, startDate, endDate, roiType, roiNames;
+      let dataset, startDate, endDate, roiType, roiNames, isBBox = false;
       let isCustom = false;
       let customAsset = "";
 
@@ -1497,7 +1497,7 @@ document.addEventListener("DOMContentLoaded", () => {
         endDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-02" : endDateInput.value;
         
         roiType = document.querySelector('input[name="roi_type"]:checked').value;
-        const isBBox = (roiType === "bbox_upload" || roiType === "bbox_draw");
+        isBBox = (roiType === "bbox_upload" || roiType === "bbox_draw");
 
         // Update form required state based on selections
         if (roiType === "country") {
@@ -1558,9 +1558,11 @@ document.addEventListener("DOMContentLoaded", () => {
         if (glmPointsBBox) {
           roiType = "bbox";
           roiNames = `${glmPointsBBox.minLat},${glmPointsBBox.minLon},${glmPointsBBox.maxLat},${glmPointsBBox.maxLon}`;
+          isBBox = true;
         } else {
           roiType = "";
           roiNames = "";
+          isBBox = false;
         }
       }
 
@@ -1837,6 +1839,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const glmExtractionForm = document.getElementById("glmExtractionForm");
 
       let selectedGLMFile = null;
+      let selectedGLMFileToSend = null;
 
       if (glmDropzone && glmFileInput) {
         // Trigger file input click
@@ -1888,13 +1891,21 @@ document.addEventListener("DOMContentLoaded", () => {
         const lines = text.split(/\r?\n/);
         if (lines.length < 2) return null;
         
-        const headers = lines[0].split(",").map(h => h.trim().replace(/^["']|["']$/g, ""));
+        let delimiter = ",";
+        const firstLine = lines[0];
+        if (firstLine.includes("\t") && !firstLine.includes(",")) {
+          delimiter = "\t";
+        } else if (firstLine.includes(";") && !firstLine.includes(",")) {
+          delimiter = ";";
+        }
+        
+        const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ""));
         const latColIdx = headers.findIndex(h => ["latitude", "lat", "lat_deg", "y"].includes(h.toLowerCase()));
         const lonColIdx = headers.findIndex(h => ["longitude", "lon", "lng", "lon_deg", "x"].includes(h.toLowerCase()));
         const dateColIdx = headers.findIndex(h => ["date", "time", "datetime", "year_month_day"].includes(h.toLowerCase()));
 
         if (latColIdx === -1 || lonColIdx === -1) {
-          return { error: "Could not detect latitude and longitude columns. CSV must contain headers like 'latitude' and 'longitude'." };
+          return { error: "Could not detect latitude and longitude columns. File must contain headers like 'latitude' and 'longitude'." };
         }
 
         const points = [];
@@ -1904,7 +1915,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const line = lines[i].trim();
           if (!line) continue;
           
-          const cols = line.split(",").map(c => c.trim().replace(/^["']|["']$/g, ""));
+          const cols = line.split(delimiter).map(c => c.trim().replace(/^["']|["']$/g, ""));
           if (cols.length <= Math.max(latColIdx, lonColIdx)) continue;
 
           const lat = parseFloat(cols[latColIdx]);
@@ -1917,15 +1928,19 @@ document.addEventListener("DOMContentLoaded", () => {
             const dateStr = cols[dateColIdx].trim();
             if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
               dates.push(new Date(dateStr));
+            } else {
+              const d = new Date(dateStr);
+              if (!isNaN(d.getTime())) {
+                dates.push(d);
+              }
             }
           }
         }
 
         if (points.length === 0) {
-          return { error: "No rows with valid numeric coordinates found in the CSV." };
+          return { error: "No rows with valid numeric coordinates found in the file." };
         }
 
-        // Compute BBox
         const lats = points.map(p => p.lat);
         const lons = points.map(p => p.lon);
         const bbox = {
@@ -1935,7 +1950,6 @@ document.addEventListener("DOMContentLoaded", () => {
           maxLon: Math.max(...lons)
         };
 
-        // Compute Date Span
         let dateSpan = null;
         if (dates.length > 0) {
           dates.sort((a, b) => a - b);
@@ -2003,7 +2017,6 @@ document.addEventListener("DOMContentLoaded", () => {
             banner.style.display = "block";
           }
         } else {
-          // Range mode
           if (dateRow) dateRow.style.display = "block";
           if (banner) {
             banner.textContent = "Covariates will be extracted as the average over the manually selected date range below for all points.";
@@ -2016,39 +2029,45 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       function handleGLMFileSelection(file) {
-        if (!file.name.endsWith(".csv")) {
-          glmUploadStatus.textContent = "Error: Please upload a valid CSV file.";
+        const ext = file.name.split('.').pop().toLowerCase();
+        const validExtensions = ["csv", "txt", "tsv", "xlsx", "xls"];
+        if (!validExtensions.includes(ext)) {
+          glmUploadStatus.textContent = "Error: Invalid file format. Please upload CSV, TXT, TSV, or Excel (.xlsx/.xls) files.";
           glmUploadStatus.style.color = "#f85149";
           glmUploadStatus.style.display = "block";
           selectedGLMFile = null;
+          selectedGLMFileToSend = null;
           updateGLMSubmitBtnState();
           return;
         }
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const text = e.target.result;
+        const isExcel = ext === "xlsx" || ext === "xls";
+
+        const processFileContent = (text, originalFile) => {
           const result = parseCSVClientSide(text);
           if (!result || result.error) {
-            glmUploadStatus.textContent = "Error: " + (result?.error || "Failed to parse CSV file.");
+            glmUploadStatus.textContent = "Error: " + (result?.error || "Failed to parse coordinate file.");
             glmUploadStatus.style.color = "#f85149";
             glmUploadStatus.style.display = "block";
             selectedGLMFile = null;
+            selectedGLMFileToSend = null;
             updateGLMSubmitBtnState();
             return;
           }
 
-          selectedGLMFile = file;
-          glmUploadText.textContent = `Selected: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+          selectedGLMFile = originalFile;
+          const blob = new Blob([text], { type: "text/csv;charset=utf-8;" });
+          const csvFileName = originalFile.name.substring(0, originalFile.name.lastIndexOf('.')) + ".csv";
+          selectedGLMFileToSend = new File([blob], csvFileName, { type: "text/csv" });
+
+          glmUploadText.textContent = `Selected: ${originalFile.name} (${(originalFile.size / 1024).toFixed(1)} KB)`;
           glmUploadStatus.style.display = "none";
 
           glmPointsBBox = result.bbox;
           glmParsedDatesSpan = result.dateSpan;
 
-          // Draw markers
           renderGLMPointsOnMap(result.points);
 
-          // Configure modes
           const modeGroup = document.getElementById("glm_mode_group");
           const exactRadio = document.querySelector('input[name="glm_date_mode"][value="exact"]');
           const rangeRadio = document.querySelector('input[name="glm_date_mode"][value="range"]');
@@ -2077,7 +2096,45 @@ document.addEventListener("DOMContentLoaded", () => {
           activePipeline = "discrete";
           triggerMapUpdate();
         };
-        reader.readAsText(file);
+
+        if (isExcel) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const data = new Uint8Array(e.target.result);
+              const workbook = XLSX.read(data, { type: 'array' });
+              const firstSheetName = workbook.SheetNames[0];
+              const worksheet = workbook.Sheets[firstSheetName];
+              const csvText = XLSX.utils.sheet_to_csv(worksheet);
+              processFileContent(csvText, file);
+            } catch (err) {
+              console.error("Excel conversion error:", err);
+              glmUploadStatus.textContent = "Error: Failed to read Excel file structure.";
+              glmUploadStatus.style.color = "#f85149";
+              glmUploadStatus.style.display = "block";
+              selectedGLMFile = null;
+              selectedGLMFileToSend = null;
+              updateGLMSubmitBtnState();
+            }
+          };
+          reader.onerror = () => {
+            glmUploadStatus.textContent = "Error reading Excel file.";
+            glmUploadStatus.style.color = "#f85149";
+            glmUploadStatus.style.display = "block";
+          };
+          reader.readAsArrayBuffer(file);
+        } else {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            processFileContent(e.target.result, file);
+          };
+          reader.onerror = () => {
+            glmUploadStatus.textContent = "Error reading text file.";
+            glmUploadStatus.style.color = "#f85149";
+            glmUploadStatus.style.display = "block";
+          };
+          reader.readAsText(file);
+        }
       }
 
       function updateGLMSubmitBtnState() {
@@ -2149,7 +2206,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (glmExtractionForm) {
         glmExtractionForm.addEventListener("submit", async (e) => {
           e.preventDefault();
-          if (!selectedGLMFile) return;
+          if (!selectedGLMFileToSend) return;
 
           const dataset = glmDatasetSelect.value;
           if (!dataset) return;
@@ -2167,7 +2224,7 @@ document.addEventListener("DOMContentLoaded", () => {
           glmDownloadContainer.style.display = "none";
 
           const formData = new FormData();
-          formData.append("file", selectedGLMFile);
+          formData.append("file", selectedGLMFileToSend);
           formData.append("dataset", dataset);
 
           const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
