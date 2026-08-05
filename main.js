@@ -1613,11 +1613,22 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
+      console.log("[PhyloCov Map Debug] triggerMapUpdate running:", {
+        activePipeline,
+        dataset,
+        startDate,
+        endDate,
+        roiType,
+        roiNames,
+        isBBox
+      });
+
       if (mapLoadingOverlay) mapLoadingOverlay.style.display = "flex";
 
       try {
         const queryRoiType = isBBox ? "bbox" : roiType;
         let queryUrl = `${BACKEND_URL}/map?dataset=${encodeURIComponent(isCustom ? customAsset : dataset)}&start_date=${startDate}&end_date=${endDate}&roi_type=${queryRoiType}&roi_names=${encodeURIComponent(roiNames)}`;
+        console.log("[PhyloCov Map Debug] Fetching map layer URL:", queryUrl);
         
         if (isCustom) {
           const band = mapCustomBandSelect.value;
@@ -1634,6 +1645,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const response = await fetch(queryUrl);
         const data = await response.json();
+        console.log("[PhyloCov Map Debug] Map layer response received:", data);
 
         if (!response.ok) throw new Error(data.detail || "Failed to load map tiles");
 
