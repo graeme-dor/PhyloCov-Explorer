@@ -530,19 +530,117 @@
             <div id="discrete_controls_container" style="display: none;">
               <form id="glmExtractionForm" style="display: flex; flex-direction: column; gap: 1rem;">
                 <div class="form-group">
-                  <label style="font-weight: 600; margin-bottom: 0.5rem; display: block;">1. Upload Sample Points</label>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <label id="glm_step1_label" style="font-weight: 600; margin: 0;">1. Upload Sample Points</label>
+                    <div class="pipeline-switcher" style="padding: 2px; margin-bottom: 0; background: rgba(0,0,0,0.3); border: 1px solid #30363d; border-radius: 6px;">
+                      <button type="button" class="pipeline-tab active" id="glm_mode_point_btn" data-glm-mode="point" style="padding: 2px 8px; font-size: 0.75rem; border-radius: 4px; border: none; cursor: pointer; background: var(--accent-color); color: white;">📍 Points</button>
+                      <button type="button" class="pipeline-tab" id="glm_mode_poly_btn" data-glm-mode="boundary" style="padding: 2px 8px; font-size: 0.75rem; border-radius: 4px; border: none; cursor: pointer; background: transparent; color: var(--text-muted);">🗺️ Boundaries</button>
+                    </div>
+                  </div>
                   <div class="upload-dropzone" id="glm_upload_dropzone" style="padding: 1.5rem; border: 2px dashed rgba(255,255,255,0.15); border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s ease; background: rgba(255,255,255,0.01);">
                     <span id="glm_upload_text" style="font-size: 0.9rem;">Drag & drop CSV, TXT, or Excel here, or click to browse</span>
                     <input type="file" id="glm_file_input" accept=".csv,.txt,.tsv,.xlsx,.xls" style="display: none;">
                   </div>
                   <div id="glm_upload_status" style="font-size: 0.8rem; color: var(--accent-secondary); font-family: monospace; display: none; margin-top: 0.5rem; text-align: left;"></div>
+                  <div id="glm_boundary_hint" style="display: none; font-size: 0.75rem; color: #8b949e; margin-top: 0.35rem; text-align: left; line-height: 1.4;">
+                    💡 Accepts <code>.geojson</code>, <code>.json</code>, or zipped ESRI Shapefiles (<code>.zip</code> containing <code>.shp</code> + <code>.dbf</code>) in WGS84 (EPSG:4326).
+                  </div>
                 </div>
 
                 <div class="form-group">
-                  <label for="glm_dataset_select" style="font-weight: 600; margin-bottom: 0.5rem; display: block;">2. Select Environmental Dataset</label>
-                  <select id="glm_dataset_select" name="dataset" required style="width: 100%; padding: 0.6rem; font-size: 0.95rem; border-radius: 6px; background: var(--bg-color); color: var(--text-color); border: 1px solid #30363d; outline: none; transition: border-color 0.2s;">
-                    <option value="" disabled selected>Select a dataset...</option>
-                    <option value="chirps">CHIRPS Daily Precipitation</option>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <label style="font-weight: 600; margin: 0;">2. Select Environmental Covariates</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                      <button type="button" id="glm_select_all_btn" style="background: none; border: none; color: #58a6ff; font-size: 0.75rem; cursor: pointer; padding: 0;">Select All</button>
+                      <span style="color: #30363d;">|</span>
+                      <button type="button" id="glm_clear_all_btn" style="background: none; border: none; color: #8b949e; font-size: 0.75rem; cursor: pointer; padding: 0;">Clear</button>
+                    </div>
+                  </div>
+
+                  <!-- Multi-dataset Checklist Container -->
+                  <div id="glm_datasets_list" style="display: flex; flex-direction: column; gap: 0.35rem; max-height: 220px; overflow-y: auto; background: rgba(0,0,0,0.25); border: 1px solid #30363d; border-radius: 6px; padding: 0.5rem;">
+                    
+                    <label class="glm-dataset-item" style="display: flex; align-items: center; justify-content: space-between; padding: 0.35rem 0.5rem; border-radius: 4px; cursor: pointer; transition: background 0.15s;">
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" name="glm_datasets" value="chirps" checked>
+                        <span style="font-size: 0.88rem; font-weight: 500;">CHIRPS Precipitation</span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~5.5km</span>
+                        <input type="radio" name="glm_preview_dataset" value="chirps" checked title="Preview on Map" style="cursor: pointer;">
+                      </div>
+                    </label>
+
+                    <label class="glm-dataset-item" style="display: flex; align-items: center; justify-content: space-between; padding: 0.35rem 0.5rem; border-radius: 4px; cursor: pointer; transition: background 0.15s;">
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" name="glm_datasets" value="era5">
+                        <span style="font-size: 0.88rem; font-weight: 500;">ERA5 Daily Temperature</span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~27.8km</span>
+                        <input type="radio" name="glm_preview_dataset" value="era5" title="Preview on Map" style="cursor: pointer;">
+                      </div>
+                    </label>
+
+                    <label class="glm-dataset-item" style="display: flex; align-items: center; justify-content: space-between; padding: 0.35rem 0.5rem; border-radius: 4px; cursor: pointer; transition: background 0.15s;">
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" name="glm_datasets" value="era5_land_monthly">
+                        <span style="font-size: 0.88rem; font-weight: 500;">ERA5-Land Monthly Temp</span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~11.1km</span>
+                        <input type="radio" name="glm_preview_dataset" value="era5_land_monthly" title="Preview on Map" style="cursor: pointer;">
+                      </div>
+                    </label>
+
+                    <label class="glm-dataset-item" style="display: flex; align-items: center; justify-content: space-between; padding: 0.35rem 0.5rem; border-radius: 4px; cursor: pointer; transition: background 0.15s;">
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" name="glm_datasets" value="modis_ndvi">
+                        <span style="font-size: 0.88rem; font-weight: 500;">MODIS NDVI (Vegetation)</span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">250m</span>
+                        <input type="radio" name="glm_preview_dataset" value="modis_ndvi" title="Preview on Map" style="cursor: pointer;">
+                      </div>
+                    </label>
+
+                    <label class="glm-dataset-item" style="display: flex; align-items: center; justify-content: space-between; padding: 0.35rem 0.5rem; border-radius: 4px; cursor: pointer; transition: background 0.15s;">
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" name="glm_datasets" value="modis_lst_day">
+                        <span style="font-size: 0.88rem; font-weight: 500;">MODIS LST Day (Surface Temp)</span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~5.6km</span>
+                        <input type="radio" name="glm_preview_dataset" value="modis_lst_day" title="Preview on Map" style="cursor: pointer;">
+                      </div>
+                    </label>
+
+                    <label class="glm-dataset-item" style="display: flex; align-items: center; justify-content: space-between; padding: 0.35rem 0.5rem; border-radius: 4px; cursor: pointer; transition: background 0.15s;">
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" name="glm_datasets" value="modis_lst_night">
+                        <span style="font-size: 0.88rem; font-weight: 500;">MODIS LST Night (Surface Temp)</span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~5.6km</span>
+                        <input type="radio" name="glm_preview_dataset" value="modis_lst_night" title="Preview on Map" style="cursor: pointer;">
+                      </div>
+                    </label>
+
+                    <label class="glm-dataset-item" style="display: flex; align-items: center; justify-content: space-between; padding: 0.35rem 0.5rem; border-radius: 4px; cursor: pointer; transition: background 0.15s;">
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" name="glm_datasets" value="srtm">
+                        <span style="font-size: 0.88rem; font-weight: 500;">SRTM Elevation</span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">30m</span>
+                        <input type="radio" name="glm_preview_dataset" value="srtm" title="Preview on Map" style="cursor: pointer;">
+                      </div>
+                    </label>
+                  </div>
+
+                  <!-- Retain hidden select for synchronizing Leaflet map tiles and date range sliders -->
+                  <select id="glm_dataset_select" name="dataset" style="display: none;">
+                    <option value="chirps" selected>CHIRPS Daily Precipitation</option>
                     <option value="era5">ERA5 Daily Aggregates</option>
                     <option value="era5_land_monthly">ERA5-Land Monthly Aggregates</option>
                     <option value="modis_ndvi">MODIS NDVI (MOD13Q1)</option>
@@ -550,7 +648,11 @@
                     <option value="modis_lst_night">MODIS Monthly LST Night (5.6km)</option>
                     <option value="srtm">SRTM Elevation (30m)</option>
                   </select>
-                  <div id="glmDatasetInfo" style="font-size: 0.8rem; color: #8b949e; margin-top: 0.35rem; font-family: monospace;">Select a dataset to view details</div>
+
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem;">
+                    <span id="glm_selection_count" style="font-size: 0.78rem; color: #58a6ff; font-weight: 600;">1 layer selected for extraction</span>
+                    <span style="font-size: 0.72rem; color: #8b949e;">◉ Radio button sets map preview</span>
+                  </div>
                 </div>
 
                 <!-- Mode Selection -->
@@ -598,6 +700,40 @@
                 <div id="glm_notice_banner" style="display: none; font-size: 0.85rem; color: var(--accent-secondary); margin-bottom: 0.5rem; border: 1px dashed rgba(88, 166, 255, 0.3); padding: 8px 12px; border-radius: 6px; text-align: left; background: rgba(88, 166, 255, 0.03); line-height: 1.4;">
                 </div>
 
+                <!-- BEAST GLM Matrix Configuration (Step 4) -->
+                <div class="form-group" id="glm_matrix_options_group" style="display: none; border-top: 1px solid #30363d; padding-top: 0.85rem; margin-top: 0.5rem;">
+                  <label style="font-weight: 600; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between;">
+                    <span>4. BEAST GLM Predictor Matrices</span>
+                    <span style="font-size: 0.75rem; background: rgba(88, 166, 255, 0.15); color: #58a6ff; padding: 2px 6px; border-radius: 4px; font-weight: 500;">Optional</span>
+                  </label>
+                  
+                  <label style="font-weight: normal; font-size: 0.88rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; color: #c9d1d9;">
+                    <input type="checkbox" id="glm_generate_matrices_checkbox"> Format Pairwise Matrices for BEAUti / BEAST
+                  </label>
+                  
+                  <div id="glm_matrix_settings" style="display: none; flex-direction: column; gap: 0.75rem; background: rgba(0,0,0,0.25); padding: 0.75rem; border-radius: 6px; border: 1px solid #30363d;">
+                    <div>
+                      <label for="glm_location_col_select" style="font-size: 0.82rem; font-weight: 600; display: block; margin-bottom: 0.25rem;">Discrete Trait / Location Column</label>
+                      <select id="glm_location_col_select" style="width: 100%; padding: 0.45rem 0.6rem; font-size: 0.85rem; border-radius: 4px; background: var(--bg-color); color: var(--text-color); border: 1px solid #30363d;">
+                        <option value="" disabled selected>Select location column...</option>
+                      </select>
+                      <div id="glm_detected_locations_hint" style="font-size: 0.75rem; color: #8b949e; margin-top: 0.25rem; font-family: monospace;"></div>
+                    </div>
+
+                    <div>
+                      <label for="glm_aggregation_select" style="font-size: 0.82rem; font-weight: 600; display: block; margin-bottom: 0.25rem;">Sample Aggregation Function</label>
+                      <select id="glm_aggregation_select" style="width: 100%; padding: 0.45rem 0.6rem; font-size: 0.85rem; border-radius: 4px; background: var(--bg-color); color: var(--text-color); border: 1px solid #30363d;">
+                        <option value="mean" selected>Mean (Average of samples per location)</option>
+                        <option value="median">Median (Central value)</option>
+                      </select>
+                    </div>
+
+                    <div style="font-size: 0.75rem; color: #8b949e; line-height: 1.4; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 0.5rem;">
+                      Exports a <code>.zip</code> package containing great-circle distance, origin, destination, and absolute difference matrices (raw and standardized Z-scores) ready for BEAST GLM diffusion models.
+                    </div>
+                  </div>
+                </div>
+
                 <button type="submit" class="export-btn" id="glmSubmitBtn" disabled style="opacity: 0.5; cursor: not-allowed; transition: all 0.2s; font-weight: 600; padding: 0.75rem 1rem; margin-top: 0.5rem;">Extract Point Covariates</button>
               </form>
 
@@ -612,12 +748,23 @@
                 </div>
               </div>
 
-              <div style="margin-top: 1.5rem; text-align: left; border-top: 1px solid #30363d; padding-top: 1rem;">
-                <h4 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: #c9d1d9;">Expected CSV Format</h4>
-                <pre style="background: var(--bg-color-alt); border: 1px solid #30363d; padding: 0.75rem; border-radius: 6px; font-family: monospace; font-size: 0.8rem; color: #8b949e; overflow-x: auto; margin: 0.5rem 0; box-shadow: inset 0 2px 8px rgba(0,0,0,0.3);">
-sample_id,latitude,longitude,date
-Sample_001,-33.92,18.42,2021-03-15
-Sample_002,-26.20,28.04,2022-06-20</pre>
+              <div id="glm_expected_format_container" style="margin-top: 1.5rem; text-align: left; border-top: 1px solid #30363d; padding-top: 1rem;">
+                <div id="glm_expected_points_box">
+                  <h4 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: #c9d1d9;">Expected CSV Format (Sample Points)</h4>
+                  <pre style="background: var(--bg-color-alt); border: 1px solid #30363d; padding: 0.75rem; border-radius: 6px; font-family: monospace; font-size: 0.8rem; color: #8b949e; overflow-x: auto; margin: 0.5rem 0; box-shadow: inset 0 2px 8px rgba(0,0,0,0.3);">
+sample_id,latitude,longitude,date,location
+Sample_001,-33.92,18.42,2021-03-15,Cape_Town
+Sample_002,-26.20,28.04,2022-06-20,Johannesburg
+Sample_003,-29.85,31.02,2021-08-10,Durban</pre>
+                </div>
+                <div id="glm_expected_poly_box" style="display: none;">
+                  <h4 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: #c9d1d9;">Expected Spatial Boundary Formats</h4>
+                  <div style="font-size: 0.8rem; color: #8b949e; line-height: 1.5; background: var(--bg-color-alt); border: 1px solid #30363d; padding: 0.75rem; border-radius: 6px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.3);">
+                    <div>• <strong>GeoJSON (<code>.geojson</code>, <code>.json</code>):</strong> FeatureCollection of Polygon or MultiPolygon geometries with location/deme attributes (e.g. <code>NAME_1</code>, <code>admin</code>).</div>
+                    <div style="margin-top: 0.35rem;">• <strong>Zipped Shapefile (<code>.zip</code>):</strong> Archive containing <code>.shp</code>, <code>.dbf</code>, and <code>.shx</code> files in WGS84 (EPSG:4326).</div>
+                    <div style="margin-top: 0.35rem;">• Zonal environmental reductions (mean) are computed across each polygon boundary, and geometric centroids are automatically determined for BEAST GLM distance matrices.</div>
+                  </div>
+                </div>
               </div>
             </div> <!-- End discrete_controls_container -->
           </div>

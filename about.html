@@ -3,11 +3,146 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>About | PhyloCov</title>
+    <title>About & Methods | PhyloCov</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/style.css" />
+    <style>
+      .methods-nav {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 2.5rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid #30363d;
+      }
+      .methods-nav a {
+        color: #8b949e;
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+        padding: 0.4rem 0.8rem;
+        border-radius: 6px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08);
+        transition: all 0.2s ease;
+      }
+      .methods-nav a:hover {
+        color: #58a6ff;
+        background: rgba(88, 166, 255, 0.08);
+        border-color: rgba(88, 166, 255, 0.3);
+      }
+      .math-block {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-left: 3px solid #58a6ff;
+        border-radius: 6px;
+        padding: 1.25rem 1.5rem;
+        margin: 1.5rem 0;
+        font-family: 'Fira Code', monospace;
+        font-size: 0.95rem;
+        color: #e6edf3;
+        overflow-x: auto;
+        box-shadow: inset 0 2px 8px rgba(0,0,0,0.3);
+        line-height: 1.6;
+      }
+      .workflow-step {
+        display: flex;
+        gap: 1.25rem;
+        margin-bottom: 2rem;
+        align-items: flex-start;
+      }
+      .step-num {
+        background: rgba(88, 166, 255, 0.15);
+        color: #58a6ff;
+        font-weight: 800;
+        font-size: 1.1rem;
+        width: 2.2rem;
+        height: 2.2rem;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        border: 1px solid rgba(88, 166, 255, 0.3);
+      }
+      .step-content {
+        flex: 1;
+      }
+      .step-content h4 {
+        color: #e6edf3;
+        font-size: 1.1rem;
+        margin-bottom: 0.4rem;
+        font-weight: 600;
+      }
+      .step-content p {
+        font-size: 0.98rem;
+        line-height: 1.6;
+        color: #8b949e;
+        margin-bottom: 0.5rem;
+      }
+      .spec-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1.5rem 0 2.5rem 0;
+        font-size: 0.88rem;
+      }
+      .spec-table th, .spec-table td {
+        padding: 0.75rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid #30363d;
+      }
+      .spec-table th {
+        background: #161b22;
+        color: #c9d1d9;
+        font-weight: 600;
+      }
+      .spec-table tr:hover td {
+        background: rgba(88, 166, 255, 0.03);
+      }
+      .citation-card {
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 1.25rem;
+        margin-bottom: 1rem;
+        font-size: 0.92rem;
+        line-height: 1.6;
+      }
+      .citation-title {
+        color: #e6edf3;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+      }
+      .citation-authors {
+        color: #8b949e;
+        font-size: 0.85rem;
+        margin-bottom: 0.25rem;
+      }
+      .citation-journal {
+        color: #58a6ff;
+        font-size: 0.85rem;
+      }
+      .callout-box {
+        background: rgba(88, 166, 255, 0.05);
+        border: 1px solid rgba(88, 166, 255, 0.25);
+        border-radius: 8px;
+        padding: 1.25rem;
+        margin: 1.5rem 0;
+      }
+      .callout-box h4 {
+        color: #58a6ff;
+        margin-bottom: 0.5rem;
+        font-size: 1rem;
+      }
+      .callout-box p {
+        font-size: 0.92rem;
+        color: #c9d1d9;
+        margin: 0;
+        line-height: 1.6;
+      }
+    </style>
   </head>
   <body>
     <!-- Navigation Bar -->
@@ -31,23 +166,367 @@
       </div>
     </nav>
 
-    <!-- Content -->
-    <header class="hero" style="min-height: 80vh;">
+    <!-- Header Hero -->
+    <header class="hero" style="min-height: 50vh; padding: 4rem 2rem 2rem 2rem;">
       <div class="hero-background"></div>
-      <div class="hero-content">
+      <div class="hero-content" style="max-width: 900px; margin: 0 auto;">
         <h1>About & Methods</h1>
-        <p class="subtitle">Information regarding the development, citation, and pipeline integration of PhyloCov</p>
+        <p class="subtitle" style="font-size: 1.15rem; max-width: 800px; margin: 0 auto; color: #8b949e;">
+          Theoretical formulations, mathematical derivations of phylodynamic predictors, and step-by-step guides for BEAST GLMs and Seraphim landscape genetics.
+        </p>
       </div>
     </header>
 
-    <main class="content-flow">
+    <main class="content-flow" style="padding-top: 0;">
       <section class="content-section text-content fade-in-section is-visible">
-        <div class="container">
-          <h2>Methods</h2>
-          <p>PhyloCov integrates high-resolution spatial data layers within Google Earth Engine to provide aggregated environmental statistics over defined extents and timeframes.</p>
+        <div class="container" style="max-width: 960px; margin: 0 auto;">
           
-          <h2 style="margin-top: 3rem;">How to Cite</h2>
-          <p>If you use PhyloCov in your research, please cite the upcoming publication.</p>
+          <!-- Quick Jump Navigation -->
+          <div class="methods-nav">
+            <a href="#overview">Overview</a>
+            <a href="#glm-math">GLM Formulations</a>
+            <a href="#beast-workflow">BEAST / BEAUti Guide</a>
+            <a href="#seraphim-guide">Seraphim Guide</a>
+            <a href="#specifications">Dataset Specs</a>
+            <a href="#citations">Citations</a>
+          </div>
+
+          <!-- Section 1: Overview -->
+          <div id="overview" style="margin-bottom: 4rem;">
+            <h2>Methodological Overview</h2>
+            <p>
+              Infectious disease phylodynamics seeks to infer pathogen transmission patterns, demographic history, and spatial dissemination directly from viral or bacterial genome sequences. While genomic data provide high temporal resolution on ancestral branching, testing hypotheses about <em>why</em> pathogens disperse through specific geographical corridors requires integrating environmental, climatic, and topological covariates.
+            </p>
+            <p>
+              Traditionally, integrating Earth observation rasters into phylodynamic workflows involves cumbersome local GIS pipelines: downloading hundreds of gigabytes of satellite tiles, clipping to study boundaries, re-projecting, aggregating across time windows, and manually formatting pairwise matrix structures. <strong>PhyloCov</strong> eliminates this friction by leveraging Google Earth Engine's distributed planetary computational infrastructure, exposing two specialized pipelines:
+            </p>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 2rem 0;">
+              <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem;">
+                <h3 style="color: #58a6ff; font-size: 1.15rem; margin-bottom: 0.75rem;">1. Continuous Phylodynamics (Seraphim)</h3>
+                <p style="font-size: 0.92rem; color: #8b949e; line-height: 1.6; margin: 0;">
+                  Cloud export of high-resolution, georeferenced GeoTIFF raster layers for Continuous Relaxed Random Walk (RRW) diffusion models. Used in the R package <code>seraphim</code> to test whether environmental surfaces act as conductances or resistances to pathogen movement across continuous space.
+                </p>
+              </div>
+              <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem;">
+                <h3 style="color: #2ea043; font-size: 1.15rem; margin-bottom: 0.75rem;">2. Discrete Phylodynamics (BEAST GLM)</h3>
+                <p style="font-size: 0.92rem; color: #8b949e; line-height: 1.6; margin: 0;">
+                  Concurrent extraction of environmental covariates for discrete sample coordinates or boundary polygons (GeoJSON/Shapefiles), producing fully formatted, standardized $K \times K$ predictor matrices ready for direct import into BEAST / BEAUti discrete diffusion models.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 2: Mathematical Formulations -->
+          <div id="glm-math" style="margin-bottom: 4rem;">
+            <h2>Mathematical Formulations of GLM Predictors</h2>
+            <p>
+              In discrete phylogeography, transition rates between $K$ distinct geographic demes are modeled as a continuous-time Markov chain (CTMC). Following <strong>Lemey et al. (2014)</strong>, the Generalized Linear Model (GLM) parameterizes the transition rate $\Lambda_{ij}$ between origin deme $i$ and destination deme $j$ as a log-linear function of $P$ potential predictors:
+            </p>
+
+            <div class="math-block">
+              log(&Lambda;<sub>ij</sub>) = &beta;<sub>0</sub> + &sum;<sub>k=1...P</sub> &beta;<sub>k</sub> &times; &delta;<sub>k</sub> &times; X<sub>k, ij</sub>
+            </div>
+
+            <p style="font-size: 0.95rem;">
+              where:
+            </p>
+            <ul style="color: #8b949e; font-size: 0.92rem; line-height: 1.8; margin-left: 1.5rem; margin-bottom: 1.5rem;">
+              <li><strong>&beta;<sub>0</sub></strong> is the baseline transition rate intercept.</li>
+              <li><strong>&beta;<sub>k</sub></strong> represents the effect size coefficient (slope) quantifying the contribution of predictor $k$. A positive $\beta_k$ indicates an increase in lineage transition rate with higher predictor values.</li>
+              <li><strong>&delta;<sub>k</sub> &isin; {0, 1}</strong> is a binary indicator variable operating under a spike-and-slab mixture prior, used to evaluate predictor inclusion probability and calculate Bayes factors.</li>
+              <li><strong>X<sub>k, ij</sub></strong> is the value of the $k$-th pairwise predictor between location $i$ and location $j$.</li>
+            </ul>
+
+            <h3 style="margin-top: 2rem; color: #e6edf3; font-size: 1.25rem;">1. Geographic Distance Predictors</h3>
+            <p>
+              Geographic proximity is the foundational driver of pathogen dispersal (gravity model). PhyloCov calculates great-circle distance $d_{ij}$ in kilometers using the Haversine formula between location centroids:
+            </p>
+
+            <div class="math-block">
+              a = sin&sup2;(&Delta;&phi; / 2) + cos(&phi;<sub>i</sub>) &times; cos(&phi;<sub>j</sub>) &times; sin&sup2;(&Delta;&lambda; / 2)
+              <br>
+              d<sub>ij</sub> = 2 &times; R &times; arctan2(&radic;a, &radic;(1 - a)) &nbsp;&nbsp;[where R = 6371.0 km]
+            </div>
+
+            <p>
+              Because spatial dispersal resistance typically scales non-linearly with distance, PhyloCov generates both raw distance ($d_{ij}$ in km) and log-transformed distance ($\log d_{ij}$). Standardizing log-distance provides the canonical baseline against which ecological covariates are evaluated.
+            </p>
+
+            <h3 style="margin-top: 2rem; color: #e6edf3; font-size: 1.25rem;">2. Environmental Covariate Matrices</h3>
+            <p>
+              For each environmental layer $C$ extracted from Earth Engine (e.g. precipitation, temperature, elevation, NDVI), PhyloCov generates 4 pairwise directional hypotheses testing distinct transmission mechanisms:
+            </p>
+
+            <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.25rem; margin: 1.5rem 0;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                <tr style="border-bottom: 1px solid #30363d;">
+                  <th style="padding: 0.5rem; text-align: left; color: #58a6ff;">Matrix Type</th>
+                  <th style="padding: 0.5rem; text-align: left; color: #58a6ff;">Formulation</th>
+                  <th style="padding: 0.5rem; text-align: left; color: #58a6ff;">Biological Hypothesis Tested</th>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 0.75rem 0.5rem; font-weight: 600; color: #e6edf3;">Origin</td>
+                  <td style="padding: 0.75rem 0.5rem; font-family: monospace;">X<sub>ij</sub> = C<sub>i</sub></td>
+                  <td style="padding: 0.75rem 0.5rem; color: #8b949e;"><strong>Emigration driver:</strong> Tests whether higher environmental values at the source increase outbound transmission (e.g. higher temperatures driving vector density and outbound viral export).</td>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 0.75rem 0.5rem; font-weight: 600; color: #e6edf3;">Destination</td>
+                  <td style="padding: 0.75rem 0.5rem; font-family: monospace;">X<sub>ij</sub> = C<sub>j</sub></td>
+                  <td style="padding: 0.75rem 0.5rem; color: #8b949e;"><strong>Immigration driver:</strong> Tests whether higher values at the destination facilitate successful lineage establishment and persistence.</td>
+                </tr>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <td style="padding: 0.75rem 0.5rem; font-weight: 600; color: #e6edf3;">Absolute Difference</td>
+                  <td style="padding: 0.75rem 0.5rem; font-family: monospace;">X<sub>ij</sub> = |C<sub>i</sub> - C<sub>j</sub>|</td>
+                  <td style="padding: 0.75rem 0.5rem; color: #8b949e;"><strong>Ecological barrier:</strong> Tests whether differences in ecology act as barriers to movement (isolation-by-environment), where larger differences reduce transmission.</td>
+                </tr>
+                <tr>
+                  <td style="padding: 0.75rem 0.5rem; font-weight: 600; color: #e6edf3;">Pairwise Average</td>
+                  <td style="padding: 0.75rem 0.5rem; font-family: monospace;">X<sub>ij</sub> = (C<sub>i</sub> + C<sub>j</sub>) / 2</td>
+                  <td style="padding: 0.75rem 0.5rem; color: #8b949e;"><strong>Corridor suitability:</strong> Tests whether lineage movement is higher when both locations share favorable environmental conditions.</td>
+                </tr>
+              </table>
+            </div>
+
+            <h3 style="margin-top: 2rem; color: #e6edf3; font-size: 1.25rem;">3. Off-Diagonal Z-Score Standardization</h3>
+            <p>
+              In CTMC substitution models, self-transitions (diagonal entries $X_{ii}$) are non-events and must equal 0.0. To ensure Bayesian priors (e.g., standard Normal or Laplace shrinkage priors) behave properly and effect sizes $\beta_k$ across heterogeneous physical units (e.g., mm/day vs °C vs meters) are directly comparable, PhyloCov standardizes matrices across their <strong>off-diagonal</strong> elements:
+            </p>
+
+            <div class="math-block">
+              &mu;<sub>off</sub> = &Sigma;<sub>i &ne; j</sub> X<sub>ij</sub> / (K(K - 1))
+              <br>
+              &sigma;<sub>off</sub> = &radic;[ &Sigma;<sub>i &ne; j</sub> (X<sub>ij</sub> - &mu;<sub>off</sub>)&sup2; / (K(K - 1) - 1) ]
+              <br>
+              X̃<sub>ij</sub> = (X<sub>ij</sub> - &mu;<sub>off</sub>) / &sigma;<sub>off</sub> &nbsp;&nbsp;[for i &ne; j; &nbsp;X̃<sub>ii</sub> = 0.0]
+            </div>
+
+            <div class="callout-box">
+              <h4>Standardization Best Practice</h4>
+              <p>
+                PhyloCov generates both raw matrices (e.g. <code>matrix_chirps_origin.csv</code>) and standardized matrices (e.g. <code>matrix_chirps_origin_std.csv</code>). <strong>Always import the standardized (<code>*_std.csv</code>) matrices into BEAUti</strong>. Unstandardized matrices with widely differing variances will distort MCMC acceptance rates and bias Bayes factors.
+              </p>
+            </div>
+          </div>
+
+          <!-- Section 3: BEAST / BEAUti Guide -->
+          <div id="beast-workflow" style="margin-bottom: 4rem;">
+            <h2>Step-by-Step Guide: BEAST / BEAUti GLM Setup</h2>
+            <p>
+              Below is the step-by-step procedure for incorporating PhyloCov's generated GLM predictor package into BEAUti (BEAST v1.10.x / v1.11.x):
+            </p>
+
+            <div class="workflow-step">
+              <div class="step-num">1</div>
+              <div class="step-content">
+                <h4>Extract Predictors in PhyloCov</h4>
+                <p>Upload your sample spreadsheet or boundary shapefile in PhyloCov. Select your desired environmental layers, enable <strong>"BEAST GLM Predictor Matrices"</strong>, and download the resulting <code>.zip</code> package.</p>
+              </div>
+            </div>
+
+            <div class="workflow-step">
+              <div class="step-num">2</div>
+              <div class="step-content">
+                <h4>Configure Discrete Trait in BEAUti</h4>
+                <p>Open BEAUti. Navigate to the <strong>Traits</strong> panel and create a new discrete trait (e.g. <code>location</code>). Map your taxa IDs to their discrete state names matching the locations in <code>location_summary.csv</code>.</p>
+              </div>
+            </div>
+
+            <div class="workflow-step">
+              <div class="step-num">3</div>
+              <div class="step-content">
+                <h4>Enable GLM Diffusion Model</h4>
+                <p>Under the <strong>Sites</strong> panel for your discrete trait, select the <strong>Generalized Linear Model (GLM)</strong> diffusion extension. In the GLM settings, specify whether the transition matrix is symmetric or asymmetric.</p>
+              </div>
+            </div>
+
+            <div class="workflow-step">
+              <div class="step-num">4</div>
+              <div class="step-content">
+                <h4>Import Standardized Predictor Matrices</h4>
+                <p>In the GLM Predictors panel, click <strong>"Import Predictor"</strong>. Import <code>matrix_great_circle_distance_log_std.csv</code> as your baseline spatial predictor. Next, import any environmental hypotheses of interest (e.g., <code>matrix_era5_origin_std.csv</code>, <code>matrix_chirps_abs_difference_std.csv</code>).</p>
+              </div>
+            </div>
+
+            <div class="workflow-step">
+              <div class="step-num">5</div>
+              <div class="step-content">
+                <h4>Set Prior Distributions</h4>
+                <p>Under the <strong>Priors</strong> panel, ensure the GLM coefficients $\beta_k$ have appropriate shrinkage priors (e.g., Normal($0, \sigma^2=2.0$)). The inclusion indicator $\delta_k$ typically has a Bernoulli prior with expected inclusion equal to $\frac{\log 2}{P}$ or $50\%$ depending on hypothesis sparsity.</p>
+              </div>
+            </div>
+
+            <div class="workflow-step">
+              <div class="step-num">6</div>
+              <div class="step-content">
+                <h4>Evaluate Bayes Factors in Tracer</h4>
+                <p>Run your MCMC chain in BEAST. In <strong>Tracer</strong>, examine the marginal posterior probability of inclusion for each predictor $k$ ($p_k = P(\delta_k = 1 | \text{data})$). Compute Bayes factors relative to the prior probability $p_0$:</p>
+                <div class="math-block" style="margin: 0.5rem 0;">
+                  BF<sub>k</sub> = [ p<sub>k</sub> / (1 - p<sub>k</sub>) ] / [ p<sub>0</sub> / (1 - p<sub>0</sub>) ]
+                </div>
+                <p>Conventionally, $BF > 3$ indicates positive support, $BF > 10$ indicates strong support, and $BF > 100$ indicates decisive statistical evidence.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 4: Seraphim Guide -->
+          <div id="seraphim-guide" style="margin-bottom: 4rem;">
+            <h2>Continuous Phylogeography & Landscape Genetics (Seraphim)</h2>
+            <p>
+              For pathogens exhibiting continuous spatial expansion (e.g., rabies in wildlife, West Nile virus in birds, seasonal influenza), lineages diffuse across continuous geographic coordinates rather than jumping between discrete demes.
+            </p>
+            <p>
+              PhyloCov's <strong>Pipeline 1 (Continuous Phylodynamics)</strong> exports high-resolution, georeferenced GeoTIFF environmental rasters directly from Earth Engine. In the R package <code>seraphim</code> (Dellicour et al. 2016), these rasters are analyzed against posterior tree distributions generated from Continuous Relaxed Random Walk (RRW) models:
+            </p>
+
+            <div class="workflow-step">
+              <div class="step-num">1</div>
+              <div class="step-content">
+                <h4>Continuous Tree Inference in BEAST</h4>
+                <p>Sample viral sequences with continuous lat/lon coordinates. In BEAST, fit a Continuous Relaxed Random Walk (RRW) with a Cauchy or log-normal distribution on branch diffusion rates.</p>
+              </div>
+            </div>
+
+            <div class="workflow-step">
+              <div class="step-num">2</div>
+              <div class="step-content">
+                <h4>Export Study Extent GeoTIFFs from PhyloCov</h4>
+                <p>In PhyloCov Pipeline 1, select your region of interest (e.g. South Africa, Kenya, or custom bounding box). Choose your environmental variables (e.g. SRTM elevation, MODIS NDVI, ERA5 temperature), adjust the temporal window, and export the GeoTIFF.</p>
+              </div>
+            </div>
+
+            <div class="workflow-step">
+              <div class="step-num">3</div>
+              <div class="step-content">
+                <h4>Landscape Path Extraction in Seraphim</h4>
+                <p>In R, use <code>seraphim::extractPath()</code> to trace individual phylogenetic branches over the environmental raster. Test whether movement duration correlates with environmental conductance or resistance using least-cost path or circuit theory algorithms (via <code>gdistance</code>).</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 5: Dataset Specifications Table -->
+          <div id="specifications" style="margin-bottom: 4rem;">
+            <h2>Supported Earth Engine Datasets</h2>
+            <p>
+              The following curated environmental presets are integrated into PhyloCov, evaluated directly on Google Earth Engine servers:
+            </p>
+
+            <table class="spec-table">
+              <thead>
+                <tr>
+                  <th>Preset</th>
+                  <th>Earth Engine Asset</th>
+                  <th>Target Band</th>
+                  <th>Resolution</th>
+                  <th>Cadence</th>
+                  <th>Provider</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>CHIRPS</strong></td>
+                  <td><code>UCSB-CHG/CHIRPS/DAILY</code></td>
+                  <td><code>precipitation</code> (mm/day)</td>
+                  <td>~5,566 m (0.05°)</td>
+                  <td>Daily</td>
+                  <td>UCSB Climate Hazards Group</td>
+                </tr>
+                <tr>
+                  <td><strong>ERA5 Daily</strong></td>
+                  <td><code>ECMWF/ERA5/DAILY</code></td>
+                  <td><code>mean_2m_air_temperature</code> (°C)</td>
+                  <td>~27,830 m (0.25°)</td>
+                  <td>Daily</td>
+                  <td>ECMWF / Copernicus</td>
+                </tr>
+                <tr>
+                  <td><strong>ERA5-Land</strong></td>
+                  <td><code>ECMWF/ERA5_LAND/MONTHLY_AGGR</code></td>
+                  <td><code>temperature_2m</code> (°C)</td>
+                  <td>~11,132 m (0.1°)</td>
+                  <td>Monthly</td>
+                  <td>ECMWF / Copernicus</td>
+                </tr>
+                <tr>
+                  <td><strong>MODIS NDVI</strong></td>
+                  <td><code>MODIS/061/MOD13Q1</code></td>
+                  <td><code>NDVI</code> (scale: 0.0001)</td>
+                  <td>250 m</td>
+                  <td>16-Day</td>
+                  <td>NASA / USGS LP DAAC</td>
+                </tr>
+                <tr>
+                  <td><strong>MODIS LST Day</strong></td>
+                  <td><code>MODIS/061/MOD21C3</code></td>
+                  <td><code>LST_Day</code> (°C)</td>
+                  <td>~5,566 m (0.05°)</td>
+                  <td>Monthly</td>
+                  <td>NASA / USGS LP DAAC</td>
+                </tr>
+                <tr>
+                  <td><strong>MODIS LST Night</strong></td>
+                  <td><code>MODIS/061/MOD21C3</code></td>
+                  <td><code>LST_Night</code> (°C)</td>
+                  <td>~5,566 m (0.05°)</td>
+                  <td>Monthly</td>
+                  <td>NASA / USGS LP DAAC</td>
+                </tr>
+                <tr>
+                  <td><strong>SRTM Elevation</strong></td>
+                  <td><code>USGS/SRTMGL1_003</code></td>
+                  <td><code>elevation</code> (meters)</td>
+                  <td>30 m</td>
+                  <td>Static</td>
+                  <td>NASA / USGS / JPL</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Section 6: Citations & Bibliography -->
+          <div id="citations" style="margin-bottom: 5rem;">
+            <h2>Key References & Citations</h2>
+            <p>
+              When utilizing environmental covariates extracted via PhyloCov in publications, please cite the core methodology and the relevant primary dataset sources:
+            </p>
+
+            <div class="citation-card">
+              <div class="citation-title">PhyloCov-Explorer</div>
+              <div class="citation-authors">Dor, G., et al. (2026).</div>
+              <div class="citation-journal">PhyloCov: A Cloud-Powered Earth Engine Platform for Environmental Covariate Extraction in Viral Phylodynamics. (Manuscript in preparation).</div>
+            </div>
+
+            <div class="citation-card">
+              <div class="citation-title">Discrete GLM Phylogeographic Diffusion</div>
+              <div class="citation-authors">Lemey, P., Rambaut, A., Bedford, T., Faria, N., Bieleman, M. A., Baele, G., ... & Suchard, M. A. (2014).</div>
+              <div class="citation-journal">Unifying viral genetics and human transportation data to predict the global transmission dynamics of human influenza H3N2. <em>PLoS Pathogens</em>, 10(2), e1003932.</div>
+            </div>
+
+            <div class="citation-card">
+              <div class="citation-title">Continuous Landscape Phylogeography (Seraphim)</div>
+              <div class="citation-authors">Dellicour, S., Rose, R., Faria, N. R., Lemey, P., & Pybus, O. G. (2016).</div>
+              <div class="citation-journal">SERAPHIM: studying environmental rasters and phylogenetically informed movements. <em>Bioinformatics</em>, 32(20), 3204-3206.</div>
+            </div>
+
+            <div class="citation-card">
+              <div class="citation-title">Google Earth Engine Planetary Computing Platform</div>
+              <div class="citation-authors">Gorelick, N., Hancher, M., Dixon, M., Ilyushchenko, S., Thau, D., & Moore, R. (2017).</div>
+              <div class="citation-journal">Google Earth Engine: Planetary-scale geospatial analysis for everyone. <em>Remote Sensing of Environment</em>, 202, 18-27.</div>
+            </div>
+
+            <div class="citation-card">
+              <div class="citation-title">CHIRPS Rainfall Estimates</div>
+              <div class="citation-authors">Funk, C., Peterson, P., Landsfeld, M., Pedreros, D., Verdin, J., Shukla, S., ... & Verdin, J. (2015).</div>
+              <div class="citation-journal">The climate hazards group infrared precipitation with stations—a new environmental record for monitoring extremes. <em>Scientific Data</em>, 2(1), 1-21.</div>
+            </div>
+
+            <div class="citation-card">
+              <div class="citation-title">ERA5-Land Global Atmospheric Reanalysis</div>
+              <div class="citation-authors">Muñoz-Sabater, J., Dutra, E., Agustí-Panareda, A., Albergel, C., Arduini, G., Balsamo, G., ... & Thépaut, J. N. (2021).</div>
+              <div class="citation-journal">ERA5-Land: A state-of-the-art global reanalysis dataset for land applications. <em>Earth System Science Data</em>, 13(9), 4349-4383.</div>
+            </div>
+          </div>
+
         </div>
       </section>
     </main>

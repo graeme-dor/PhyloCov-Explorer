@@ -892,3 +892,15 @@ iframe.loaded {
   color: var(--text-color);
 }
 
+/* Multi-dataset selection items */
+.glm-dataset-item:hover {
+  background: rgba(88, 166, 255, 0.08) !important;
+}
+
+.glm-dataset-item input[type="checkbox"],
+.glm-dataset-item input[type="radio"] {
+  accent-color: var(--accent-color);
+  cursor: pointer;
+}
+
+

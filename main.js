@@ -1056,10 +1056,12 @@ document.addEventListener("DOMContentLoaded", () => {
     
     // Pipeline 2 Discrete GLM state variables
     let activePipeline = "continuous"; // "continuous" or "discrete"
+    let glmInputMode = "point"; // "point" or "boundary"
     let glmPointsBBox = null;
     let glmParsedDatesSpan = null;
     let glmUploadedMarkersLayer = null;
     let glmUploadedBBoxLayer = null;
+    let glmUploadedGeoJsonLayer = null;
     let glmDatasetSelect = null;
 
     let isDrawingMode = false;
@@ -1903,6 +1905,60 @@ document.addEventListener("DOMContentLoaded", () => {
       let selectedGLMFile = null;
       let selectedGLMFileToSend = null;
 
+      const glmModePointBtn = document.getElementById("glm_mode_point_btn");
+      const glmModePolyBtn = document.getElementById("glm_mode_poly_btn");
+      const glmStep1Label = document.getElementById("glm_step1_label");
+      const glmBoundaryHint = document.getElementById("glm_boundary_hint");
+      const glmExpectedPointsBox = document.getElementById("glm_expected_points_box");
+      const glmExpectedPolyBox = document.getElementById("glm_expected_poly_box");
+
+      function setGLMInputMode(mode) {
+        glmInputMode = mode;
+        if (mode === "point") {
+          if (glmModePointBtn) {
+            glmModePointBtn.classList.add("active");
+            glmModePointBtn.style.background = "var(--accent-color)";
+            glmModePointBtn.style.color = "white";
+          }
+          if (glmModePolyBtn) {
+            glmModePolyBtn.classList.remove("active");
+            glmModePolyBtn.style.background = "transparent";
+            glmModePolyBtn.style.color = "var(--text-muted)";
+          }
+          if (glmStep1Label) glmStep1Label.textContent = "1. Upload Sample Points";
+          if (glmUploadText) glmUploadText.textContent = "Drag & drop CSV, TXT, or Excel here, or click to browse";
+          if (glmFileInput) glmFileInput.accept = ".csv,.txt,.tsv,.xlsx,.xls";
+          if (glmBoundaryHint) glmBoundaryHint.style.display = "none";
+          if (glmExpectedPointsBox) glmExpectedPointsBox.style.display = "block";
+          if (glmExpectedPolyBox) glmExpectedPolyBox.style.display = "none";
+        } else {
+          if (glmModePolyBtn) {
+            glmModePolyBtn.classList.add("active");
+            glmModePolyBtn.style.background = "var(--accent-color)";
+            glmModePolyBtn.style.color = "white";
+          }
+          if (glmModePointBtn) {
+            glmModePointBtn.classList.remove("active");
+            glmModePointBtn.style.background = "transparent";
+            glmModePointBtn.style.color = "var(--text-muted)";
+          }
+          if (glmStep1Label) glmStep1Label.textContent = "1. Upload Spatial Boundaries";
+          if (glmUploadText) glmUploadText.textContent = "Drag & drop GeoJSON (.geojson, .json) or Zipped Shapefile (.zip) here, or click to browse";
+          if (glmFileInput) glmFileInput.accept = ".geojson,.json,.zip";
+          if (glmBoundaryHint) glmBoundaryHint.style.display = "block";
+          if (glmExpectedPointsBox) glmExpectedPointsBox.style.display = "none";
+          if (glmExpectedPolyBox) glmExpectedPolyBox.style.display = "block";
+        }
+        updateGLMSubmitBtnState();
+      }
+
+      if (glmModePointBtn) {
+        glmModePointBtn.addEventListener("click", () => setGLMInputMode("point"));
+      }
+      if (glmModePolyBtn) {
+        glmModePolyBtn.addEventListener("click", () => setGLMInputMode("boundary"));
+      }
+
       if (glmDropzone && glmFileInput) {
         // Trigger file input click
         glmDropzone.addEventListener("click", () => {
@@ -1972,6 +2028,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const points = [];
         const dates = [];
+        const parsedRows = [];
 
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i].trim();
@@ -1985,6 +2042,12 @@ document.addEventListener("DOMContentLoaded", () => {
           if (isNaN(lat) || isNaN(lon)) continue;
 
           points.push({ lat, lon });
+
+          const rowObj = {};
+          headers.forEach((h, hIdx) => {
+            rowObj[h] = cols[hIdx] !== undefined ? cols[hIdx] : "";
+          });
+          parsedRows.push(rowObj);
 
           if (dateColIdx !== -1 && cols[dateColIdx]) {
             const dateStr = cols[dateColIdx].trim();
@@ -2020,7 +2083,7 @@ document.addEventListener("DOMContentLoaded", () => {
           dateSpan = { start: minDateStr, end: maxDateStr };
         }
 
-        return { points, bbox, dateSpan };
+        return { points, bbox, dateSpan, headers, rows: parsedRows };
       }
 
       function renderGLMPointsOnMap(points) {
@@ -2093,11 +2156,45 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
+      function renderGLMPolygonsOnMap(geojsonData) {
+        if (glmUploadedBBoxLayer) map.removeLayer(glmUploadedBBoxLayer);
+        if (glmUploadedMarkersLayer) map.removeLayer(glmUploadedMarkersLayer);
+        if (glmUploadedGeoJsonLayer) map.removeLayer(glmUploadedGeoJsonLayer);
+
+        glmUploadedGeoJsonLayer = L.geoJSON(geojsonData, {
+          style: function() {
+            return {
+              color: "#58a6ff",
+              weight: 2,
+              opacity: 0.85,
+              fillColor: "#58a6ff",
+              fillOpacity: 0.15
+            };
+          },
+          onEachFeature: function(feature, layer) {
+            if (feature.properties) {
+              const props = feature.properties;
+              const nameKey = Object.keys(props).find(k => ["name", "name_1", "region", "adm1_name", "id", "state", "province"].includes(k.toLowerCase())) || Object.keys(props)[0];
+              const title = nameKey ? props[nameKey] : "Boundary Region";
+              layer.bindTooltip(`<strong>${title}</strong>`, { sticky: true });
+            }
+          }
+        }).addTo(map);
+
+        const bounds = glmUploadedGeoJsonLayer.getBounds();
+        if (bounds && bounds.isValid()) {
+          map.fitBounds(bounds, {
+            ...getMapPadding(40),
+            maxZoom: 10
+          });
+        }
+      }
+
       function handleGLMFileSelection(file) {
         const ext = file.name.split('.').pop().toLowerCase();
-        const validExtensions = ["csv", "txt", "tsv", "xlsx", "xls"];
+        const validExtensions = ["csv", "txt", "tsv", "xlsx", "xls", "geojson", "json", "zip"];
         if (!validExtensions.includes(ext)) {
-          glmUploadStatus.textContent = "Error: Invalid file format. Please upload CSV, TXT, TSV, or Excel (.xlsx/.xls) files.";
+          glmUploadStatus.textContent = "Error: Invalid file format. Please upload CSV/Excel, GeoJSON (.geojson/.json), or Zipped Shapefile (.zip).";
           glmUploadStatus.style.color = "#f85149";
           glmUploadStatus.style.display = "block";
           selectedGLMFile = null;
@@ -2106,7 +2203,192 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
+        const isGeoJSON = ext === "geojson" || ext === "json";
+        const isZip = ext === "zip";
         const isExcel = ext === "xlsx" || ext === "xls";
+
+        if (isGeoJSON) {
+          setGLMInputMode("boundary");
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const geojson = JSON.parse(e.target.result);
+              let features = [];
+              if (geojson.type === "FeatureCollection") {
+                features = geojson.features || [];
+              } else if (geojson.type === "Feature") {
+                features = [geojson];
+              }
+
+              if (features.length === 0) {
+                throw new Error("GeoJSON contains no features.");
+              }
+
+              selectedGLMFile = file;
+              selectedGLMFileToSend = file;
+
+              glmUploadText.textContent = `Selected GeoJSON: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+              glmUploadStatus.style.display = "none";
+
+              renderGLMPolygonsOnMap(geojson);
+
+              // Date Mode Handling
+              const modeGroup = document.getElementById("glm_mode_group");
+              const exactRadio = document.querySelector('input[name="glm_date_mode"][value="exact"]');
+              const rangeRadio = document.querySelector('input[name="glm_date_mode"][value="range"]');
+
+              if (modeGroup) modeGroup.style.display = "block";
+
+              // Check if properties have date
+              const sampleProps = features[0].properties || {};
+              const dateKey = Object.keys(sampleProps).find(k => ["date", "time", "datetime", "year_month_day"].includes(k.toLowerCase()));
+              if (dateKey) {
+                if (exactRadio) {
+                  exactRadio.disabled = false;
+                  exactRadio.checked = true;
+                }
+                setGLMDateExtractionMode("exact");
+              } else {
+                if (exactRadio) exactRadio.disabled = true;
+                if (rangeRadio) rangeRadio.checked = true;
+                setGLMDateExtractionMode("range");
+              }
+
+              // Setup BEAST GLM Matrix Options
+              const matrixOptionsGroup = document.getElementById("glm_matrix_options_group");
+              const matrixCheckbox = document.getElementById("glm_generate_matrices_checkbox");
+              const matrixSettings = document.getElementById("glm_matrix_settings");
+              const locationSelect = document.getElementById("glm_location_col_select");
+              const locationHint = document.getElementById("glm_detected_locations_hint");
+
+              if (matrixOptionsGroup && locationSelect) {
+                matrixOptionsGroup.style.display = "block";
+                locationSelect.innerHTML = '<option value="" disabled selected>Select location attribute...</option>';
+
+                const candidateCols = Object.keys(sampleProps);
+                candidateCols.forEach(col => {
+                  const opt = document.createElement("option");
+                  opt.value = col;
+                  opt.textContent = col;
+                  locationSelect.appendChild(opt);
+                });
+
+                const updateHint = (colName) => {
+                  if (!colName) {
+                    if (locationHint) locationHint.textContent = "";
+                    return;
+                  }
+                  const uniqueLocs = Array.from(new Set(features.map(f => f.properties?.[colName]?.toString().trim()).filter(Boolean)));
+                  if (locationHint) {
+                    if (uniqueLocs.length >= 2) {
+                      const sampleList = uniqueLocs.slice(0, 4).join(", ") + (uniqueLocs.length > 4 ? `, +${uniqueLocs.length - 4} more` : "");
+                      locationHint.textContent = `✓ Found ${uniqueLocs.length} discrete locations (${sampleList})`;
+                      locationHint.style.color = "#3fb950";
+                    } else if (uniqueLocs.length === 1) {
+                      locationHint.textContent = `⚠️ Only 1 location found ("${uniqueLocs[0]}"). BEAST GLMs require at least 2 distinct states.`;
+                      locationHint.style.color = "#d29922";
+                    } else {
+                      locationHint.textContent = "No valid values found in this attribute.";
+                      locationHint.style.color = "#f85149";
+                    }
+                  }
+                };
+
+                locationSelect.onchange = (ev) => updateHint(ev.target.value);
+
+                const autoCol = candidateCols.find(col => {
+                  const lower = col.toLowerCase();
+                  return ["name", "name_1", "name_0", "admin", "region", "province", "state", "id", "iso_a3"].some(k => lower.includes(k));
+                });
+
+                if (autoCol) {
+                  locationSelect.value = autoCol;
+                  if (matrixCheckbox) matrixCheckbox.checked = true;
+                  if (matrixSettings) matrixSettings.style.display = "flex";
+                  updateHint(autoCol);
+                } else {
+                  if (matrixCheckbox) matrixCheckbox.checked = true;
+                  if (matrixSettings) matrixSettings.style.display = "flex";
+                  if (candidateCols.length > 0) {
+                    locationSelect.value = candidateCols[0];
+                    updateHint(candidateCols[0]);
+                  }
+                }
+
+                if (matrixCheckbox) {
+                  matrixCheckbox.onchange = (ev) => {
+                    if (matrixSettings) {
+                      matrixSettings.style.display = ev.target.checked ? "flex" : "none";
+                    }
+                  };
+                }
+              }
+
+              updateGLMSubmitBtnState();
+              activePipeline = "discrete";
+              triggerMapUpdate();
+
+            } catch (err) {
+              console.error("GeoJSON parse error:", err);
+              glmUploadStatus.textContent = "Error: " + (err.message || "Invalid GeoJSON file.");
+              glmUploadStatus.style.color = "#f85149";
+              glmUploadStatus.style.display = "block";
+              selectedGLMFile = null;
+              selectedGLMFileToSend = null;
+              updateGLMSubmitBtnState();
+            }
+          };
+          reader.readAsText(file);
+          return;
+        }
+
+        if (isZip) {
+          setGLMInputMode("boundary");
+          selectedGLMFile = file;
+          selectedGLMFileToSend = file;
+
+          glmUploadText.textContent = `Selected Shapefile: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+          glmUploadStatus.textContent = "📦 Zipped Shapefile archive loaded. Backend will extract boundary polygons, compute zonal statistics, and calculate BEAST GLM predictor matrices.";
+          glmUploadStatus.style.color = "#58a6ff";
+          glmUploadStatus.style.display = "block";
+
+          const modeGroup = document.getElementById("glm_mode_group");
+          const exactRadio = document.querySelector('input[name="glm_date_mode"][value="exact"]');
+          const rangeRadio = document.querySelector('input[name="glm_date_mode"][value="range"]');
+          if (modeGroup) modeGroup.style.display = "block";
+          if (exactRadio) exactRadio.disabled = true;
+          if (rangeRadio) rangeRadio.checked = true;
+          setGLMDateExtractionMode("range");
+
+          // Setup matrix options
+          const matrixOptionsGroup = document.getElementById("glm_matrix_options_group");
+          const matrixCheckbox = document.getElementById("glm_generate_matrices_checkbox");
+          const matrixSettings = document.getElementById("glm_matrix_settings");
+          const locationHint = document.getElementById("glm_detected_locations_hint");
+
+          if (matrixOptionsGroup) {
+            matrixOptionsGroup.style.display = "block";
+            if (matrixCheckbox) matrixCheckbox.checked = true;
+            if (matrixSettings) matrixSettings.style.display = "flex";
+            if (locationHint) {
+              locationHint.textContent = "ℹ Location attribute will be auto-detected from shapefile DBF (e.g. NAME, ADM1, REGION).";
+              locationHint.style.color = "#58a6ff";
+            }
+          }
+
+          if (glmUploadedGeoJsonLayer) map.removeLayer(glmUploadedGeoJsonLayer);
+          if (glmUploadedMarkersLayer) map.removeLayer(glmUploadedMarkersLayer);
+          if (glmUploadedBBoxLayer) map.removeLayer(glmUploadedBBoxLayer);
+
+          updateGLMSubmitBtnState();
+          activePipeline = "discrete";
+          triggerMapUpdate();
+          return;
+        }
+
+        // Tabular Points (CSV / TSV / Excel)
+        setGLMInputMode("point");
+        if (glmUploadedGeoJsonLayer) map.removeLayer(glmUploadedGeoJsonLayer);
 
         const processFileContent = (text, originalFile) => {
           const result = parseCSVClientSide(text);
@@ -2157,6 +2439,80 @@ document.addEventListener("DOMContentLoaded", () => {
             setGLMDateExtractionMode("range");
           }
 
+          // Setup BEAST GLM Matrix Options
+          const matrixOptionsGroup = document.getElementById("glm_matrix_options_group");
+          const matrixCheckbox = document.getElementById("glm_generate_matrices_checkbox");
+          const matrixSettings = document.getElementById("glm_matrix_settings");
+          const locationSelect = document.getElementById("glm_location_col_select");
+          const locationHint = document.getElementById("glm_detected_locations_hint");
+
+          if (matrixOptionsGroup && locationSelect && result.headers) {
+            matrixOptionsGroup.style.display = "block";
+            locationSelect.innerHTML = '<option value="" disabled selected>Select location column...</option>';
+
+            const candidateCols = result.headers.filter(h => {
+              const lower = h.toLowerCase();
+              return !["latitude", "lat", "lat_deg", "y", "longitude", "lon", "lng", "lon_deg", "x", "date", "time", "datetime"].includes(lower);
+            });
+
+            candidateCols.forEach(col => {
+              const opt = document.createElement("option");
+              opt.value = col;
+              opt.textContent = col;
+              locationSelect.appendChild(opt);
+            });
+
+            const updateHint = (colName) => {
+              if (!colName || !result.rows) {
+                if (locationHint) locationHint.textContent = "";
+                return;
+              }
+              const uniqueLocs = Array.from(new Set(result.rows.map(r => r[colName]?.trim()).filter(Boolean)));
+              if (locationHint) {
+                if (uniqueLocs.length >= 2) {
+                  const sampleList = uniqueLocs.slice(0, 4).join(", ") + (uniqueLocs.length > 4 ? `, +${uniqueLocs.length - 4} more` : "");
+                  locationHint.textContent = `✓ Found ${uniqueLocs.length} discrete locations (${sampleList})`;
+                  locationHint.style.color = "#3fb950";
+                } else if (uniqueLocs.length === 1) {
+                  locationHint.textContent = `⚠️ Only 1 location found ("${uniqueLocs[0]}"). BEAST GLMs require at least 2 distinct states.`;
+                  locationHint.style.color = "#d29922";
+                } else {
+                  locationHint.textContent = "No valid values found in this column.";
+                  locationHint.style.color = "#f85149";
+                }
+              }
+            };
+
+            locationSelect.onchange = (e) => {
+              updateHint(e.target.value);
+            };
+
+            // Auto-detect best column name
+            const autoCol = candidateCols.find(col => {
+              const lower = col.toLowerCase();
+              return ["location", "deme", "admin", "region", "country", "state", "province", "site", "cluster"].some(k => lower.includes(k));
+            });
+
+            if (autoCol) {
+              locationSelect.value = autoCol;
+              if (matrixCheckbox) matrixCheckbox.checked = true;
+              if (matrixSettings) matrixSettings.style.display = "flex";
+              updateHint(autoCol);
+            } else {
+              if (matrixCheckbox) matrixCheckbox.checked = false;
+              if (matrixSettings) matrixSettings.style.display = "none";
+              if (locationHint) locationHint.textContent = "";
+            }
+
+            if (matrixCheckbox) {
+              matrixCheckbox.onchange = (e) => {
+                if (matrixSettings) {
+                  matrixSettings.style.display = e.target.checked ? "flex" : "none";
+                }
+              };
+            }
+          }
+
           updateGLMSubmitBtnState();
           activePipeline = "discrete";
           triggerMapUpdate();
@@ -2202,16 +2558,86 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
+      function getSelectedGLMDatasets() {
+        return Array.from(document.querySelectorAll('input[name="glm_datasets"]:checked')).map(cb => cb.value);
+      }
+
       function updateGLMSubmitBtnState() {
-        if (selectedGLMFile && glmDatasetSelect && glmDatasetSelect.value) {
+        const checked = getSelectedGLMDatasets();
+        const countSpan = document.getElementById("glm_selection_count");
+        if (countSpan) {
+          countSpan.textContent = checked.length === 1 
+            ? "1 layer selected for extraction" 
+            : `${checked.length} layers selected for extraction`;
+          countSpan.style.color = checked.length > 0 ? "#58a6ff" : "#f85149";
+        }
+
+        const baseTitle = glmInputMode === "boundary" ? "Extract Boundary Covariates" : "Extract Point Covariates";
+        if (selectedGLMFile && checked.length > 0) {
           glmSubmitBtn.disabled = false;
           glmSubmitBtn.style.opacity = "1";
           glmSubmitBtn.style.cursor = "pointer";
+          glmSubmitBtn.textContent = checked.length > 1 
+            ? `${baseTitle} (${checked.length} Layers)` 
+            : baseTitle;
         } else {
           glmSubmitBtn.disabled = true;
           glmSubmitBtn.style.opacity = "0.5";
           glmSubmitBtn.style.cursor = "not-allowed";
+          glmSubmitBtn.textContent = baseTitle;
         }
+      }
+
+      // Checkbox changes for multi-dataset selection
+      document.querySelectorAll('input[name="glm_datasets"]').forEach(cb => {
+        cb.addEventListener("change", () => {
+          updateGLMSubmitBtnState();
+          const previewRadio = document.querySelector('input[name="glm_preview_dataset"]:checked');
+          const checked = getSelectedGLMDatasets();
+          if (previewRadio && !cb.checked && previewRadio.value === cb.value && checked.length > 0) {
+            const nextRadio = document.querySelector(`input[name="glm_preview_dataset"][value="${checked[0]}"]`);
+            if (nextRadio) {
+              nextRadio.checked = true;
+              if (glmDatasetSelect) {
+                glmDatasetSelect.value = checked[0];
+                glmDatasetSelect.dispatchEvent(new Event("change"));
+              }
+            }
+          }
+        });
+      });
+
+      // Radio button changes for active map preview layer
+      document.querySelectorAll('input[name="glm_preview_dataset"]').forEach(rb => {
+        rb.addEventListener("change", (e) => {
+          activePipeline = "discrete";
+          const val = e.target.value;
+          const correspondingCb = document.querySelector(`input[name="glm_datasets"][value="${val}"]`);
+          if (correspondingCb && !correspondingCb.checked) {
+            correspondingCb.checked = true;
+            updateGLMSubmitBtnState();
+          }
+          if (glmDatasetSelect) {
+            glmDatasetSelect.value = val;
+            glmDatasetSelect.dispatchEvent(new Event("change"));
+          }
+        });
+      });
+
+      // Select All / Clear All buttons
+      const selectAllBtn = document.getElementById("glm_select_all_btn");
+      const clearAllBtn = document.getElementById("glm_clear_all_btn");
+      if (selectAllBtn) {
+        selectAllBtn.addEventListener("click", () => {
+          document.querySelectorAll('input[name="glm_datasets"]').forEach(cb => cb.checked = true);
+          updateGLMSubmitBtnState();
+        });
+      }
+      if (clearAllBtn) {
+        clearAllBtn.addEventListener("click", () => {
+          document.querySelectorAll('input[name="glm_datasets"]').forEach(cb => cb.checked = false);
+          updateGLMSubmitBtnState();
+        });
       }
 
       // Add mode change listeners
@@ -2273,32 +2699,47 @@ document.addEventListener("DOMContentLoaded", () => {
           e.preventDefault();
           if (!selectedGLMFileToSend) return;
 
-          const dataset = glmDatasetSelect.value;
-          if (!dataset) return;
+          const checkedDatasets = getSelectedGLMDatasets();
+          if (checkedDatasets.length === 0) return;
 
           // Prepare UI for loading
           glmSubmitBtn.disabled = true;
-          glmSubmitBtn.textContent = "Extracting...";
+          glmSubmitBtn.textContent = `Extracting ${checkedDatasets.length} Layer${checkedDatasets.length > 1 ? 's' : ''}...`;
           glmSubmitBtn.style.opacity = "0.5";
           glmSubmitBtn.style.cursor = "not-allowed";
 
           glmStatusPanel.style.display = "block";
           glmStatusDot.style.backgroundColor = "#58a6ff";
           glmStatusText.textContent = "EXTRACTING";
-          glmStatusMessage.textContent = "Uploading CSV and querying GEE at coordinates and dates (this may take a few seconds)...";
+          glmStatusMessage.textContent = `Uploading data and querying GEE across ${checkedDatasets.length} covariate layer${checkedDatasets.length > 1 ? 's' : ''} (${checkedDatasets.join(', ')})...`;
           glmDownloadContainer.style.display = "none";
 
           const formData = new FormData();
           formData.append("file", selectedGLMFileToSend);
-          formData.append("dataset", dataset);
+          formData.append("datasets", checkedDatasets.join(","));
+          formData.append("dataset", checkedDatasets[0]); // legacy fallback
 
           const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
-          if (dateMode === "range" && dataset !== "srtm") {
+          const hasTemporal = checkedDatasets.some(d => d !== "srtm");
+          if (dateMode === "range" && hasTemporal) {
             const startVal = document.getElementById("glm_start_date").value;
             const endVal = document.getElementById("glm_end_date").value;
             if (startVal && endVal) {
               formData.append("start_date", startVal);
               formData.append("end_date", endVal);
+            }
+          }
+
+          const generateMatricesCheckbox = document.getElementById("glm_generate_matrices_checkbox");
+          const locationColSelect = document.getElementById("glm_location_col_select");
+          const aggSelect = document.getElementById("glm_aggregation_select");
+
+          const shouldGenerateMatrices = generateMatricesCheckbox && generateMatricesCheckbox.checked && locationColSelect && locationColSelect.value;
+          if (shouldGenerateMatrices) {
+            formData.append("generate_matrices", "true");
+            formData.append("location_col", locationColSelect.value);
+            if (aggSelect) {
+              formData.append("matrix_aggregation", aggSelect.value);
             }
           }
 
@@ -2313,18 +2754,36 @@ document.addEventListener("DOMContentLoaded", () => {
               throw new Error(errData.detail || "Extraction failed");
             }
 
+            const contentType = response.headers.get("content-type") || "";
+            const isZip = contentType.includes("application/zip") || contentType.includes("zip");
+            const isGeoJson = contentType.includes("geo+json") || contentType.includes("json");
+
             const blob = await response.blob();
             const downloadUrl = window.URL.createObjectURL(blob);
 
             // Configure download link
             glmDownloadLink.href = downloadUrl;
-            const origName = selectedGLMFile.name.replace(".csv", "");
-            glmDownloadLink.download = `${origName}_enriched_${dataset}.csv`;
+            const origStem = selectedGLMFile.name.substring(0, selectedGLMFile.name.lastIndexOf('.')) || "samples";
+            const dsTag = checkedDatasets.length > 2 ? `multi_${checkedDatasets.length}_covariates` : checkedDatasets.join("_and_");
+            if (isZip) {
+              glmDownloadLink.download = `beast_glm_${dsTag}_${origStem}.zip`;
+              glmDownloadLink.textContent = "Download BEAST GLM Package (.zip) ⬇";
+            } else if (isGeoJson) {
+              glmDownloadLink.download = `enriched_${origStem}_${dsTag}.geojson`;
+              glmDownloadLink.textContent = "Download Enriched Boundaries (GeoJSON) ⬇";
+            } else {
+              glmDownloadLink.download = `${origStem}_enriched_${dsTag}.csv`;
+              glmDownloadLink.textContent = "Download Enriched CSV ⬇";
+            }
 
             // Update UI success state
             glmStatusDot.style.backgroundColor = "#238636";
             glmStatusText.textContent = "COMPLETED";
-            glmStatusMessage.textContent = "Points covariate extraction successfully completed!";
+            glmStatusMessage.textContent = isZip 
+              ? `BEAST GLM predictor package (.zip) successfully generated with pairwise matrices across ${checkedDatasets.length} covariate layer${checkedDatasets.length > 1 ? 's' : ''}!` 
+              : (glmInputMode === "boundary"
+                ? `Boundary zonal covariate extraction successfully completed across ${checkedDatasets.length} layer${checkedDatasets.length > 1 ? 's' : ''}!`
+                : `Point covariate extraction successfully completed across ${checkedDatasets.length} layer${checkedDatasets.length > 1 ? 's' : ''}!`);
             glmDownloadContainer.style.display = "block";
 
           } catch (error) {
@@ -2334,9 +2793,7 @@ document.addEventListener("DOMContentLoaded", () => {
             glmStatusMessage.textContent = error.message;
           } finally {
             glmSubmitBtn.disabled = false;
-            glmSubmitBtn.textContent = "Extract Point Covariates";
-            glmSubmitBtn.style.opacity = "1";
-            glmSubmitBtn.style.cursor = "pointer";
+            updateGLMSubmitBtnState();
           }
         });
       }
@@ -2370,12 +2827,14 @@ document.addEventListener("DOMContentLoaded", () => {
               if (uploadedMarkersLayer) uploadedMarkersLayer.addTo(map);
               if (glmUploadedBBoxLayer) map.removeLayer(glmUploadedBBoxLayer);
               if (glmUploadedMarkersLayer) map.removeLayer(glmUploadedMarkersLayer);
+              if (glmUploadedGeoJsonLayer) map.removeLayer(glmUploadedGeoJsonLayer);
             } else {
               if (continuousContainer) continuousContainer.style.display = "none";
               if (discreteContainer) discreteContainer.style.display = "block";
 
               if (glmUploadedBBoxLayer) glmUploadedBBoxLayer.addTo(map);
               if (glmUploadedMarkersLayer) glmUploadedMarkersLayer.addTo(map);
+              if (glmUploadedGeoJsonLayer) glmUploadedGeoJsonLayer.addTo(map);
               if (uploadedBBoxLayer) map.removeLayer(uploadedBBoxLayer);
               if (uploadedMarkersLayer) map.removeLayer(uploadedMarkersLayer);
             }

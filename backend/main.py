@@ -14,6 +14,11 @@ from google.auth.transport import requests
 import urllib.request
 import json
 from concurrent.futures import ThreadPoolExecutor
+import math
+import statistics
+import zipfile
+import shapefile
+
 app = FastAPI(title="PhyloCov Backend Export Service")
 
 # CORS support for future frontend integration
@@ -888,21 +893,315 @@ def get_map_tiles(
         raise HTTPException(status_code=500, detail=f"Earth Engine map generation error: {str(e)}")
 
 
-@app.post("/extract")
-async def extract_glm_covariates(
-    file: UploadFile = File(...),
-    dataset: str = Form(...),
-    start_date: Optional[str] = Form(None),
-    end_date: Optional[str] = Form(None)
-):
-    """
-    Endpoint for Pipeline 2 (Discrete Phylodynamics GLM point extraction).
-    Uploads a CSV, queries GEE at point coordinates and dates, and returns the enriched CSV.
-    """
-    preset_key = dataset.lower()
-    if preset_key not in PRESETS:
-        raise HTTPException(status_code=400, detail=f"Unsupported dataset: {dataset}")
+def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Computes great-circle distance between two points in kilometers using Haversine formula."""
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (math.sin(dlat / 2.0) ** 2 + 
+         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * 
+         math.sin(dlon / 2.0) ** 2)
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+    return R * c
 
+def standardize_matrix_off_diagonal(matrix: List[List[float]], n: int) -> List[List[float]]:
+    """Standardizes off-diagonal elements of an n x n matrix to mean 0, variance 1. Diagonal remains 0.0."""
+    off_diag = []
+    for i in range(n):
+        for j in range(n):
+            if i != j and matrix[i][j] is not None:
+                off_diag.append(matrix[i][j])
+    if len(off_diag) < 2:
+        return matrix
+    mean_val = statistics.mean(off_diag)
+    std_val = statistics.stdev(off_diag) if len(off_diag) > 1 else 0.0
+    
+    std_matrix = [[0.0 for _ in range(n)] for _ in range(n)]
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                std_matrix[i][j] = 0.0
+            elif matrix[i][j] is not None:
+                std_matrix[i][j] = round((matrix[i][j] - mean_val) / std_val, 6) if std_val > 0 else 0.0
+            else:
+                std_matrix[i][j] = 0.0
+    return std_matrix
+
+def matrix_to_csv(locations: List[str], matrix: List[List[float]]) -> str:
+    """Formats an n x n matrix into a comma-delimited string for BEAUti GLM import."""
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow([""] + locations)
+    for i, loc in enumerate(locations):
+        row_vals = [f"{v:.6f}".rstrip('0').rstrip('.') if isinstance(v, float) else str(v) for v in matrix[i]]
+        writer.writerow([loc] + row_vals)
+    return out.getvalue()
+
+
+def compute_geojson_centroid(geometry: dict) -> tuple[float, float]:
+    """
+    Computes unbiased (lat, lon) centroid for GeoJSON Point, Polygon, MultiPolygon, or GeometryCollection.
+    GeoJSON coordinates are [longitude, latitude].
+    """
+    if not geometry:
+        return 0.0, 0.0
+    gtype = geometry.get("type", "")
+    coords = geometry.get("coordinates", [])
+    if gtype == "Point":
+        if len(coords) >= 2:
+            return float(coords[1]), float(coords[0])
+        return 0.0, 0.0
+
+    all_pts = []
+    if gtype == "Polygon":
+        for ring in coords:
+            ring_pts = ring[:-1] if len(ring) > 3 and ring[0] == ring[-1] else ring
+            for pt in ring_pts:
+                if len(pt) >= 2:
+                    all_pts.append((float(pt[1]), float(pt[0])))
+    elif gtype == "MultiPolygon":
+        for poly in coords:
+            for ring in poly:
+                ring_pts = ring[:-1] if len(ring) > 3 and ring[0] == ring[-1] else ring
+                for pt in ring_pts:
+                    if len(pt) >= 2:
+                        all_pts.append((float(pt[1]), float(pt[0])))
+    elif gtype == "GeometryCollection":
+        for geom in geometry.get("geometries", []):
+            clat, clon = compute_geojson_centroid(geom)
+            if clat != 0.0 or clon != 0.0:
+                all_pts.append((clat, clon))
+
+    if not all_pts:
+        return 0.0, 0.0
+    avg_lat = sum(p[0] for p in all_pts) / len(all_pts)
+    avg_lon = sum(p[1] for p in all_pts) / len(all_pts)
+    return avg_lat, avg_lon
+
+
+def parse_spatial_file(contents: bytes, filename: str) -> tuple[str, Optional[list[dict]], Optional[list[str]]]:
+    """
+    Parses an uploaded spatial or tabular file.
+    Returns (mode, features, property_keys).
+    mode can be 'polygon', 'point_geojson', or 'tabular'.
+    """
+    lower_name = filename.lower()
+    if lower_name.endswith(".zip"):
+        # Zipped Shapefile
+        try:
+            with zipfile.ZipFile(io.BytesIO(contents)) as z:
+                shp_name = next((n for n in z.namelist() if n.lower().endswith(".shp") and not n.startswith("__MACOSX")), None)
+                dbf_name = next((n for n in z.namelist() if n.lower().endswith(".dbf") and not n.startswith("__MACOSX")), None)
+                shx_name = next((n for n in z.namelist() if n.lower().endswith(".shx") and not n.startswith("__MACOSX")), None)
+                cpg_name = next((n for n in z.namelist() if n.lower().endswith(".cpg") and not n.startswith("__MACOSX")), None)
+                if not shp_name or not dbf_name:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Zipped shapefile must contain both .shp and .dbf files."
+                    )
+
+                encoding = "utf-8"
+                if cpg_name:
+                    try:
+                        encoding = z.read(cpg_name).decode("utf-8", errors="ignore").strip()
+                    except Exception:
+                        pass
+
+                shp_io = io.BytesIO(z.read(shp_name))
+                dbf_io = io.BytesIO(z.read(dbf_name))
+                shx_io = io.BytesIO(z.read(shx_name)) if shx_name else None
+
+                sf = shapefile.Reader(shp=shp_io, dbf=dbf_io, shx=shx_io, encoding=encoding, encodingErrors="replace")
+                features = sf.__geo_interface__.get("features", [])
+                if not features:
+                    raise HTTPException(status_code=400, detail="No valid features found in the uploaded shapefile.")
+
+                prop_keys = []
+                if sf.fields:
+                    prop_keys = [f[0] for f in sf.fields if f[0] != "DeletionFlag"]
+                elif features and features[0].get("properties"):
+                    prop_keys = list(features[0]["properties"].keys())
+
+                # Validate coordinates are geographic (WGS84 degrees)
+                sample_geom = features[0].get("geometry", {})
+                sample_lat, sample_lon = compute_geojson_centroid(sample_geom)
+                if abs(sample_lat) > 90 or abs(sample_lon) > 180:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"The uploaded shapefile coordinates appear to be in a projected coordinate system "
+                            f"(centroid: {sample_lon:.1f}, {sample_lat:.1f}) rather than WGS84 geographic degrees (EPSG:4326). "
+                            "Please reproject your shapefile to EPSG:4326 (WGS84) before uploading."
+                        )
+                    )
+
+                return "polygon", features, prop_keys
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to read zipped shapefile: {str(e)}")
+
+    elif lower_name.endswith(".geojson") or lower_name.endswith(".json"):
+        try:
+            text = contents.decode("utf-8")
+        except Exception:
+            text = contents.decode("latin-1", errors="replace")
+
+        try:
+            data = json.loads(text)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON/GeoJSON: {str(e)}")
+
+        if data.get("type") == "FeatureCollection":
+            features = data.get("features", [])
+        elif data.get("type") == "Feature":
+            features = [data]
+        elif data.get("type") == "GeometryCollection":
+            features = [{"type": "Feature", "geometry": g, "properties": {}} for g in data.get("geometries", [])]
+        else:
+            raise HTTPException(status_code=400, detail="Uploaded JSON must be a GeoJSON FeatureCollection or Feature.")
+
+        if not features:
+            raise HTTPException(status_code=400, detail="GeoJSON contains no features.")
+
+        prop_keys = list(features[0].get("properties", {}).keys()) if features[0].get("properties") else []
+        first_geom_type = (features[0].get("geometry") or {}).get("type", "")
+        mode = "polygon" if "Polygon" in first_geom_type else "point_geojson"
+
+        sample_lat, sample_lon = compute_geojson_centroid(features[0].get("geometry", {}))
+        if abs(sample_lat) > 90 or abs(sample_lon) > 180:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"GeoJSON coordinates appear to be projected (sample centroid: {sample_lon:.1f}, {sample_lat:.1f}). "
+                    "Earth Engine requires WGS84 geographic coordinates (longitude -180 to 180, latitude -90 to 90)."
+                )
+            )
+
+        return mode, features, prop_keys
+
+    else:
+        return "tabular", None, None
+
+
+def build_beast_glm_matrices(
+    locations: List[str],
+    loc_centroids: dict,
+    loc_cov_values: dict,
+    new_col_names: List[str]
+) -> tuple[dict, dict, list[list], list[str]]:
+    """
+    Computes all K x K pairwise distance and environmental predictor matrices for BEAST GLM.
+    Returns (dist_matrices, cov_matrices, edge_rows, edge_headers).
+    """
+    n = len(locations)
+
+    # 1. Geographic distance matrices
+    dist_km = [[0.0 for _ in range(n)] for _ in range(n)]
+    dist_log = [[0.0 for _ in range(n)] for _ in range(n)]
+    for i in range(n):
+        loc_i = locations[i]
+        lat_i, lon_i = loc_centroids[loc_i]
+        for j in range(n):
+            if i == j:
+                continue
+            loc_j = locations[j]
+            lat_j, lon_j = loc_centroids[loc_j]
+            d = calculate_haversine_distance(lat_i, lon_i, lat_j, lon_j)
+            dist_km[i][j] = round(d, 4)
+            dist_log[i][j] = round(math.log(d), 4) if d > 0 else 0.0
+
+    dist_km_std = standardize_matrix_off_diagonal(dist_km, n)
+    dist_log_std = standardize_matrix_off_diagonal(dist_log, n)
+
+    dist_matrices = {
+        "km": dist_km,
+        "km_std": dist_km_std,
+        "log": dist_log,
+        "log_std": dist_log_std
+    }
+
+    # 2. Covariate matrices for each layer
+    cov_matrices = {}
+    for c in new_col_names:
+        orig = [[0.0 for _ in range(n)] for _ in range(n)]
+        dest = [[0.0 for _ in range(n)] for _ in range(n)]
+        diff = [[0.0 for _ in range(n)] for _ in range(n)]
+        avg = [[0.0 for _ in range(n)] for _ in range(n)]
+
+        for i in range(n):
+            ci = loc_cov_values[c].get(locations[i], 0.0)
+            for j in range(n):
+                if i == j:
+                    continue
+                cj = loc_cov_values[c].get(locations[j], 0.0)
+                orig[i][j] = round(ci, 6)
+                dest[i][j] = round(cj, 6)
+                diff[i][j] = round(abs(ci - cj), 6)
+                avg[i][j] = round((ci + cj) / 2.0, 6)
+
+        cov_matrices[c] = {
+            "origin": orig,
+            "origin_std": standardize_matrix_off_diagonal(orig, n),
+            "destination": dest,
+            "destination_std": standardize_matrix_off_diagonal(dest, n),
+            "abs_diff": diff,
+            "abs_diff_std": standardize_matrix_off_diagonal(diff, n),
+            "average": avg,
+            "average_std": standardize_matrix_off_diagonal(avg, n)
+        }
+
+    # 3. Long-format pairwise edge list
+    edge_headers = [
+        "origin", "destination",
+        "origin_lat", "origin_lon", "dest_lat", "dest_lon",
+        "distance_km", "distance_log", "distance_log_std"
+    ]
+    for c in new_col_names:
+        edge_headers.extend([
+            f"{c}_origin", f"{c}_destination", f"{c}_abs_diff", f"{c}_average",
+            f"{c}_origin_std", f"{c}_destination_std", f"{c}_abs_diff_std", f"{c}_average_std"
+        ])
+
+    edge_rows = []
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            loc_i, loc_j = locations[i], locations[j]
+            lat_i, lon_i = loc_centroids[loc_i]
+            lat_j, lon_j = loc_centroids[loc_j]
+            row_vals = [
+                loc_i, loc_j,
+                round(lat_i, 5), round(lon_i, 5), round(lat_j, 5), round(lon_j, 5),
+                dist_km[i][j], dist_log[i][j], dist_log_std[i][j]
+            ]
+            for c in new_col_names:
+                m = cov_matrices[c]
+                row_vals.extend([
+                    m["origin"][i][j], m["destination"][i][j],
+                    m["abs_diff"][i][j], m["average"][i][j],
+                    m["origin_std"][i][j], m["destination_std"][i][j],
+                    m["abs_diff_std"][i][j], m["average_std"][i][j]
+                ])
+            edge_rows.append(row_vals)
+
+    return dist_matrices, cov_matrices, edge_rows, edge_headers
+
+
+def extract_single_dataset_values(
+    fc: ee.FeatureCollection,
+    preset_key: str,
+    use_manual_range: bool,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    has_date_col: bool
+) -> tuple[str, str, dict]:
+    """
+    Extracts covariate values for a given preset from Earth Engine.
+    Operates seamlessly on both point and polygon geometries using zonal reduction.
+    Returns (preset_key, column_name, {row_idx: val}).
+    """
     preset = PRESETS[preset_key]
     asset_id = preset["asset"]
     target_band = preset["band"]
@@ -911,74 +1210,6 @@ async def extract_glm_covariates(
     target_offset = preset["offset"]
     is_monthly = preset["is_monthly"]
 
-    # Read uploaded CSV
-    contents = await file.read()
-    try:
-        csv_text = contents.decode("utf-8")
-    except Exception:
-        try:
-            csv_text = contents.decode("latin-1")
-        except Exception:
-            raise HTTPException(status_code=400, detail="Failed to decode CSV file. Make sure it is encoded in UTF-8 or Latin-1.")
-
-    f_in = io.StringIO(csv_text)
-    reader = csv.DictReader(f_in)
-    fieldnames = reader.fieldnames
-    if not fieldnames:
-        raise HTTPException(status_code=400, detail="The uploaded CSV has no columns/headers.")
-
-    # Find lat/lon/date headers
-    lat_col = next((c for c in fieldnames if c.lower() in ["latitude", "lat", "lat_deg", "y"]), None)
-    lon_col = next((c for c in fieldnames if c.lower() in ["longitude", "lon", "lng", "lon_deg", "x"]), None)
-    date_col = next((c for c in fieldnames if c.lower() in ["date", "time", "datetime", "year_month_day"]), None)
-
-    if not lat_col or not lon_col:
-        raise HTTPException(
-            status_code=400, 
-            detail="Could not detect latitude and longitude columns. CSV must have columns like 'latitude' and 'longitude'."
-        )
-
-    # For datasets that require dates, check date column or manual parameters
-    requires_date = preset_key != "srtm"
-    use_manual_range = requires_date and start_date and end_date
-    if requires_date and not use_manual_range and not date_col:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Dataset '{dataset}' is temporal and requires either a date column in the CSV (e.g. 'date') or manual start_date and end_date parameters."
-        )
-
-    # Parse rows
-    rows = []
-    features = []
-    for idx, row in enumerate(reader):
-        try:
-            lat = float(row[lat_col])
-            lon = float(row[lon_col])
-        except ValueError:
-            # Skip rows with invalid coordinates
-            continue
-
-        date_val = ""
-        if date_col:
-            date_val = row[date_col].strip()
-
-        rows.append(row)
-        
-        # Create Earth Engine Point Feature
-        geom = ee.Geometry.Point([lon, lat])
-        feature_properties = {
-            "row_idx": idx,
-            "date": date_val
-        }
-        features.append(ee.Feature(geom, feature_properties))
-
-    if not features:
-        raise HTTPException(status_code=400, detail="No rows with valid numeric coordinates found in the CSV.")
-
-    # Query Earth Engine in a single mapped batch
-    fc = ee.FeatureCollection(features)
-
-    # Fetch native scale/resolution
     native_res = 1000
     if preset_key == "chirps":
         native_res = 5566
@@ -991,8 +1222,9 @@ async def extract_glm_covariates(
     elif preset_key == "srtm":
         native_res = 30
 
+    col_name = f"{preset_key}_{target_band}"
+
     if preset_key == "srtm":
-        # Static elevation image
         img = ee.Image(asset_id).select(target_band)
         if target_multiplier != 1.0:
             img = img.multiply(target_multiplier)
@@ -1003,15 +1235,18 @@ async def extract_glm_covariates(
             val = img.reduceRegion(
                 reducer=ee.Reducer.mean(),
                 geometry=feature.geometry(),
-                scale=native_res
+                scale=native_res,
+                maxPixels=1e9,
+                bestEffort=True,
+                tileScale=4
             ).get(target_band)
             return feature.set("extracted_val", val)
 
         extracted_fc = fc.map(extract_srtm)
-    elif use_manual_range:
-        # Use single date range for all points
+
+    elif use_manual_range or not has_date_col:
         img = process_gee_image(
-            dataset=dataset,
+            dataset=preset_key,
             start_date=start_date,
             end_date=end_date,
             band=target_band,
@@ -1025,25 +1260,25 @@ async def extract_glm_covariates(
             val = img.reduceRegion(
                 reducer=ee.Reducer.mean(),
                 geometry=feature.geometry(),
-                scale=native_res
+                scale=native_res,
+                maxPixels=1e9,
+                bestEffort=True,
+                tileScale=4
             ).get(target_band)
             return feature.set("extracted_val", val)
 
         extracted_fc = fc.map(extract_range)
+
     else:
-        # Temporal datasets: extract at exact date of each point
         def extract_temporal(feature):
             date_str = feature.get("date")
             date_val = ee.Date(date_str)
-            
-            # Recreate image collection filtering for that exact day/month
             if is_monthly:
                 img_col = ee.ImageCollection(asset_id).filterDate(date_val, date_val.advance(1, "month"))
             else:
                 img_col = ee.ImageCollection(asset_id).filterDate(date_val, date_val.advance(1, "day"))
 
             img = img_col.select(target_band)
-            
             if target_reducer == "sum":
                 img = img.sum()
             elif target_reducer == "min":
@@ -1063,45 +1298,625 @@ async def extract_glm_covariates(
             val = img.reduceRegion(
                 reducer=ee.Reducer.mean(),
                 geometry=feature.geometry(),
-                scale=native_res
+                scale=native_res,
+                maxPixels=1e9,
+                bestEffort=True,
+                tileScale=4
             ).get(target_band)
-
             return feature.set("extracted_val", val)
 
         extracted_fc = fc.map(extract_temporal)
 
-    try:
-        results = extracted_fc.getInfo()
-    except Exception as e_ee:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Earth Engine query error: {str(e_ee)}. Please ensure dates are in valid format YYYY-MM-DD."
-        )
-
-    # Match results back to original rows
-    features_out = results.get("features", [])
-    extracted_values = [None] * len(rows)
+    res = extracted_fc.getInfo()
+    features_out = res.get("features", [])
+    val_map = {}
     for f in features_out:
         props = f.get("properties", {})
         idx = props.get("row_idx")
-        val = props.get("extracted_val")
-        if idx is not None and idx < len(rows):
-            extracted_values[idx] = val
+        v = props.get("extracted_val")
+        if idx is not None:
+            val_map[idx] = v
+    return preset_key, col_name, val_map
 
-    # Column name for extracted covariate
-    new_col_name = f"{preset_key}_{target_band}"
 
-    # Build output CSV
+@app.post("/extract")
+async def extract_glm_covariates(
+    file: UploadFile = File(...),
+    dataset: Optional[str] = Form(None),
+    datasets: Optional[str] = Form(None),
+    start_date: Optional[str] = Form(None),
+    end_date: Optional[str] = Form(None),
+    generate_matrices: bool = Form(False),
+    location_col: Optional[str] = Form(None),
+    matrix_aggregation: str = Form("mean")
+):
+    """
+    Endpoint for Pipeline 2 (Discrete Phylodynamics GLM covariate extraction).
+    Accepts:
+    - Tabular sample points (CSV/TSV/Excel) with coordinates and dates
+    - Spatial boundaries (GeoJSON or Zipped ESRI Shapefile) with polygons/multipolygons
+    Queries GEE across one or multiple environmental datasets concurrently,
+    and returns either an enriched file or a full BEAST GLM predictor package (.zip).
+    """
+    target_datasets = []
+    if datasets:
+        target_datasets = [d.strip().lower() for d in datasets.split(",") if d.strip()]
+    elif dataset:
+        target_datasets = [dataset.strip().lower()]
+
+    if not target_datasets:
+        raise HTTPException(status_code=400, detail="No dataset specified for extraction.")
+
+    for d in target_datasets:
+        if d not in PRESETS:
+            raise HTTPException(status_code=400, detail=f"Unsupported dataset: '{d}'. Must be one of: {list(PRESETS.keys())}")
+
+    contents = await file.read()
+    orig_filename = file.filename or "samples.csv"
+    orig_stem = orig_filename.rsplit(".", 1)[0]
+    ds_tag = "_and_".join(target_datasets[:2])
+    if len(target_datasets) > 2:
+        ds_tag = f"multi_{len(target_datasets)}_covariates"
+
+    # Detect file type: spatial (shapefile / GeoJSON) vs tabular (CSV/Excel)
+    file_type, spatial_features, spatial_prop_keys = parse_spatial_file(contents, orig_filename)
+
+    # =========================================================================
+    # BRANCH A: SPATIAL BOUNDARIES (POLYGONS / GEOJSON / ZIPPED SHAPEFILES)
+    # =========================================================================
+    if file_type in ["polygon", "point_geojson"]:
+        temporal_datasets = [d for d in target_datasets if d != "srtm"]
+        date_prop = next((k for k in spatial_prop_keys if k.lower() in ["date", "time", "datetime", "year_month_day"]), None)
+        use_manual_range = bool(temporal_datasets and start_date and end_date)
+
+        if temporal_datasets and not use_manual_range and not date_prop:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Datasets {temporal_datasets} are temporal and require either a date property in the spatial file "
+                    "or manual start_date and end_date selections."
+                )
+            )
+
+        # Build Earth Engine FeatureCollection
+        ee_features = []
+        valid_indices = []
+        for idx, f in enumerate(spatial_features):
+            geom = f.get("geometry")
+            if not geom or not geom.get("coordinates"):
+                continue
+            props = f.get("properties") or {}
+            date_val = str(props.get(date_prop, "")).strip() if date_prop else ""
+            try:
+                ee_geom = ee.Geometry(geom)
+                ee_features.append(ee.Feature(ee_geom, {"row_idx": idx, "date": date_val}))
+                valid_indices.append(idx)
+            except Exception as e_geom:
+                print(f"Skipping geometry index {idx}: {e_geom}")
+                continue
+
+        if not ee_features:
+            raise HTTPException(status_code=400, detail="No features with valid geometric coordinates found in spatial file.")
+
+        fc = ee.FeatureCollection(ee_features)
+
+        # Query all requested datasets in parallel
+        results_per_dataset = {}
+        with ThreadPoolExecutor(max_workers=min(len(target_datasets), 4)) as executor:
+            future_to_ds = {
+                executor.submit(
+                    extract_single_dataset_values,
+                    fc,
+                    ds,
+                    use_manual_range,
+                    start_date,
+                    end_date,
+                    bool(date_prop)
+                ): ds
+                for ds in target_datasets
+            }
+            for future in future_to_ds:
+                ds = future_to_ds[future]
+                try:
+                    p_key, col_name, val_map = future.result()
+                    results_per_dataset[col_name] = (p_key, val_map)
+                except Exception as e_ds:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Earth Engine query error for dataset '{ds}': {str(e_ds)}"
+                    )
+
+        new_col_names = list(results_per_dataset.keys())
+
+        # Enrich GeoJSON features with extracted values and centroids
+        enriched_features = []
+        for idx in valid_indices:
+            f = spatial_features[idx]
+            props = dict(f.get("properties") or {})
+            for col_name, (p_key, val_map) in results_per_dataset.items():
+                v = val_map.get(idx)
+                props[col_name] = round(v, 6) if v is not None else None
+
+            # Compute centroid
+            c_lat, c_lon = compute_geojson_centroid(f.get("geometry", {}))
+            props["centroid_lat"] = round(c_lat, 6)
+            props["centroid_lon"] = round(c_lon, 6)
+            f["properties"] = props
+            enriched_features.append(f)
+
+        enriched_geojson = {
+            "type": "FeatureCollection",
+            "features": enriched_features
+        }
+
+        # Tabular CSV of enriched boundaries
+        all_prop_keys = list(spatial_prop_keys)
+        for c in ["centroid_lat", "centroid_lon"] + new_col_names:
+            if c not in all_prop_keys:
+                all_prop_keys.append(c)
+
+        csv_out = io.StringIO()
+        csv_writer = csv.DictWriter(csv_out, fieldnames=all_prop_keys)
+        csv_writer.writeheader()
+        for f in enriched_features:
+            p = f.get("properties", {})
+            row = {k: p.get(k, "") for k in all_prop_keys}
+            csv_writer.writerow(row)
+
+        # If BEAST GLM matrices are requested
+        if generate_matrices:
+            # Determine location attribute
+            matched_loc_prop = None
+            if location_col:
+                matched_loc_prop = next((k for k in spatial_prop_keys if k.lower() == location_col.lower()), None)
+            if not matched_loc_prop:
+                matched_loc_prop = next(
+                    (k for k in spatial_prop_keys if k.lower() in [
+                        "name", "name_1", "name_0", "name_2", "adm1_name", "adm0_name", 
+                        "admin", "region", "province", "district", "state", "id", "iso_a3"
+                    ]), 
+                    None
+                )
+
+            loc_data = {}
+            for idx, f in enumerate(enriched_features):
+                props = f.get("properties", {})
+                if matched_loc_prop and props.get(matched_loc_prop):
+                    loc_val = str(props.get(matched_loc_prop)).strip()
+                else:
+                    loc_val = f"Boundary_{idx + 1}"
+
+                if not loc_val:
+                    loc_val = f"Boundary_{idx + 1}"
+
+                if loc_val not in loc_data:
+                    loc_data[loc_val] = {
+                        "lats": [],
+                        "lons": [],
+                        "covs": {c: [] for c in new_col_names}
+                    }
+
+                c_lat = props.get("centroid_lat", 0.0)
+                c_lon = props.get("centroid_lon", 0.0)
+                loc_data[loc_val]["lats"].append(c_lat)
+                loc_data[loc_val]["lons"].append(c_lon)
+
+                for c in new_col_names:
+                    v = props.get(c)
+                    if v is not None:
+                        loc_data[loc_val]["covs"][c].append(float(v))
+
+            locations = sorted(list(loc_data.keys()))
+            if len(locations) < 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"BEAST GLM matrix generation requires at least 2 distinct spatial locations. Found {len(locations)}: {locations}"
+                )
+
+            loc_centroids = {}
+            loc_cov_values = {c: {} for c in new_col_names}
+            for loc in locations:
+                lats = loc_data[loc]["lats"]
+                lons = loc_data[loc]["lons"]
+                loc_centroids[loc] = (statistics.mean(lats), statistics.mean(lons))
+                for c in new_col_names:
+                    vals = loc_data[loc]["covs"][c]
+                    if not vals:
+                        loc_val = 0.0
+                    elif matrix_aggregation.lower() == "median":
+                        loc_val = statistics.median(vals)
+                    else:
+                        loc_val = statistics.mean(vals)
+                    loc_cov_values[c][loc] = loc_val
+
+            dist_mats, cov_mats, edge_rows, edge_headers = build_beast_glm_matrices(
+                locations, loc_centroids, loc_cov_values, new_col_names
+            )
+
+            # Edge list CSV
+            edge_out = io.StringIO()
+            edge_writer = csv.writer(edge_out)
+            edge_writer.writerow(edge_headers)
+            for r in edge_rows:
+                edge_writer.writerow(r)
+
+            # Location summary CSV
+            loc_summary_out = io.StringIO()
+            loc_writer = csv.writer(loc_summary_out)
+            summary_headers = ["location", "polygon_count", "centroid_lat", "centroid_lon"]
+            for c in new_col_names:
+                summary_headers.append(f"{c}_zonal_{matrix_aggregation}")
+            loc_writer.writerow(summary_headers)
+
+            for loc in locations:
+                lat, lon = loc_centroids[loc]
+                cnt = len(loc_data[loc]["lats"])
+                row_vals = [loc, cnt, round(lat, 5), round(lon, 5)]
+                for c in new_col_names:
+                    row_vals.append(round(loc_cov_values[c][loc], 6))
+                loc_writer.writerow(row_vals)
+
+            readme_text = f"""========================================================================
+PHYLOCOV-EXPLORER: BEAST GLM BOUNDARY PREDICTOR PACKAGE
+========================================================================
+Input Mode: Spatial Boundaries ({file_type.upper()})
+Extracted Datasets ({len(target_datasets)}): {", ".join(target_datasets)}
+Covariate Columns: {", ".join(new_col_names)}
+Discrete Locations ({len(locations)}): {", ".join(locations)}
+Polygon Aggregation Reducer: Zonal Mean across boundaries
+Location Aggregation Function: {matrix_aggregation}
+
+HOW TO USE IN BEAST / BEAUti:
+------------------------------------------------------------------------
+1. In BEAUti (BEAST v1.10.x / v1.11.x), configure your discrete location trait.
+2. In 'Discrete Traits' or 'Sites', enable the Generalized Linear Model (GLM) extension.
+3. Import any of the K x K square matrix CSV files in this directory.
+4. Standardization:
+   - BEAST GLM diffusion models assume predictor values are standardized (mean=0, variance=1).
+   - Use the *_std.csv matrices (e.g. matrix_distance_log_std.csv).
+
+FILE DESCRIPTIONS:
+------------------------------------------------------------------------
+- enriched_boundaries.geojson:
+  Original boundaries with all extracted zonal covariate values and centroids embedded.
+- enriched_boundaries.csv:
+  Tidy tabular export of all polygon boundaries, centroids, and covariate values.
+- location_summary.csv:
+  Summary table of discrete locations, centroid coordinates, and zonal environmental stats.
+- glm_pairwise_edge_list.csv:
+  Tidy edge list of all pairwise location transitions (ideal for R / ggplot2 / Seraphim).
+
+K x K SQUARE PREDICTOR MATRICES:
+- matrix_great_circle_distance_km.csv & _std.csv:
+  Great-circle geographic distance between polygon centroids.
+- matrix_great_circle_distance_log.csv & _std.csv:
+  Log-transformed geographic distance (recommended baseline GLM predictor).
+
+For each extracted environmental covariate layer:
+- matrix_{{cov}}_origin.csv & _std.csv: Emigration driver (origin value).
+- matrix_{{cov}}_destination.csv & _std.csv: Immigration driver (destination value).
+- matrix_{{cov}}_abs_difference.csv & _std.csv: Ecological distance / barrier effect.
+- matrix_{{cov}}_average.csv & _std.csv: Overall pairwise habitat suitability.
+
+Citation:
+Lemey, P., Rambaut, A., Bedford, T., Faria, N., Bieleman, M. A., Baele, G., ... & Suchard, M. A. (2014).
+Unifying viral genetics and human transportation data to predict the global transmission dynamics 
+of human influenza H3N2. PLoS Pathogens, 10(2), e1003932.
+========================================================================
+"""
+
+            zip_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("enriched_boundaries.geojson", json.dumps(enriched_geojson, indent=2))
+                zf.writestr("enriched_boundaries.csv", csv_out.getvalue())
+                zf.writestr("location_summary.csv", loc_summary_out.getvalue())
+                zf.writestr("glm_pairwise_edge_list.csv", edge_out.getvalue())
+                zf.writestr("README_BEAST_GLM.txt", readme_text)
+
+                zf.writestr("matrix_great_circle_distance_km.csv", matrix_to_csv(locations, dist_mats["km"]))
+                zf.writestr("matrix_great_circle_distance_log.csv", matrix_to_csv(locations, dist_mats["log"]))
+                zf.writestr("matrix_great_circle_distance_log_std.csv", matrix_to_csv(locations, dist_mats["log_std"]))
+
+                for c in new_col_names:
+                    m = cov_mats[c]
+                    zf.writestr(f"matrix_{c}_origin.csv", matrix_to_csv(locations, m["origin"]))
+                    zf.writestr(f"matrix_{c}_origin_std.csv", matrix_to_csv(locations, m["origin_std"]))
+                    zf.writestr(f"matrix_{c}_destination.csv", matrix_to_csv(locations, m["destination"]))
+                    zf.writestr(f"matrix_{c}_destination_std.csv", matrix_to_csv(locations, m["destination_std"]))
+                    zf.writestr(f"matrix_{c}_abs_difference.csv", matrix_to_csv(locations, m["abs_diff"]))
+                    zf.writestr(f"matrix_{c}_abs_difference_std.csv", matrix_to_csv(locations, m["abs_diff_std"]))
+                    zf.writestr(f"matrix_{c}_average.csv", matrix_to_csv(locations, m["average"]))
+                    zf.writestr(f"matrix_{c}_average_std.csv", matrix_to_csv(locations, m["average_std"]))
+
+            zip_buf.seek(0)
+            return StreamingResponse(
+                zip_buf,
+                media_type="application/zip",
+                headers={"Content-Disposition": f'attachment; filename="beast_glm_{ds_tag}_{orig_stem}.zip"'}
+            )
+
+        # Non-matrix output: return GeoJSON or zipped package if shapefile was uploaded
+        if orig_filename.lower().endswith(".zip"):
+            zip_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr("enriched_boundaries.geojson", json.dumps(enriched_geojson, indent=2))
+                zf.writestr("enriched_boundaries.csv", csv_out.getvalue())
+            zip_buf.seek(0)
+            return StreamingResponse(
+                zip_buf,
+                media_type="application/zip",
+                headers={"Content-Disposition": f'attachment; filename="enriched_{orig_stem}.zip"'}
+            )
+
+        geo_json_str = json.dumps(enriched_geojson, indent=2)
+        return StreamingResponse(
+            io.BytesIO(geo_json_str.encode("utf-8")),
+            media_type="application/geo+json",
+            headers={"Content-Disposition": f'attachment; filename="enriched_{orig_stem}.geojson"'}
+        )
+
+    # =========================================================================
+    # BRANCH B: TABULAR SAMPLE POINTS (CSV / TSV / EXCEL)
+    # =========================================================================
+    try:
+        csv_text = contents.decode("utf-8")
+    except Exception:
+        try:
+            csv_text = contents.decode("latin-1")
+        except Exception:
+            raise HTTPException(status_code=400, detail="Failed to decode file. Please ensure it is UTF-8 or Latin-1 encoded.")
+
+    f_in = io.StringIO(csv_text)
+    reader = csv.DictReader(f_in)
+    fieldnames = reader.fieldnames
+    if not fieldnames:
+        raise HTTPException(status_code=400, detail="The uploaded tabular file has no headers.")
+
+    lat_col = next((c for c in fieldnames if c.lower() in ["latitude", "lat", "lat_deg", "y"]), None)
+    lon_col = next((c for c in fieldnames if c.lower() in ["longitude", "lon", "lng", "lon_deg", "x"]), None)
+    date_col = next((c for c in fieldnames if c.lower() in ["date", "time", "datetime", "year_month_day"]), None)
+
+    if not lat_col or not lon_col:
+        raise HTTPException(
+            status_code=400, 
+            detail="Could not detect latitude and longitude columns. CSV must have columns like 'latitude' and 'longitude'."
+        )
+
+    temporal_datasets = [d for d in target_datasets if d != "srtm"]
+    use_manual_range = bool(temporal_datasets and start_date and end_date)
+    if temporal_datasets and not use_manual_range and not date_col:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Datasets {temporal_datasets} are temporal and require either a date column in the CSV (e.g. 'date') or manual start_date and end_date parameters."
+        )
+
+    rows = []
+    features = []
+    for idx, row in enumerate(reader):
+        try:
+            lat = float(row[lat_col])
+            lon = float(row[lon_col])
+        except (ValueError, TypeError):
+            continue
+
+        date_val = ""
+        if date_col:
+            date_val = (row[date_col] or "").strip()
+
+        rows.append(row)
+        geom = ee.Geometry.Point([lon, lat])
+        features.append(ee.Feature(geom, {"row_idx": idx, "date": date_val}))
+
+    if not features:
+        raise HTTPException(status_code=400, detail="No rows with valid numeric coordinates found in the CSV.")
+
+    fc = ee.FeatureCollection(features)
+
+    # Query all requested datasets in parallel
+    results_per_dataset = {}
+    with ThreadPoolExecutor(max_workers=min(len(target_datasets), 4)) as executor:
+        future_to_ds = {
+            executor.submit(
+                extract_single_dataset_values,
+                fc,
+                ds,
+                use_manual_range,
+                start_date,
+                end_date,
+                bool(date_col)
+            ): ds
+            for ds in target_datasets
+        }
+        for future in future_to_ds:
+            ds = future_to_ds[future]
+            try:
+                p_key, col_name, val_map = future.result()
+                results_per_dataset[col_name] = (p_key, val_map)
+            except Exception as e_ds:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Earth Engine query error for dataset '{ds}': {str(e_ds)}"
+                )
+
+    new_col_names = list(results_per_dataset.keys())
+
+    # Append all extracted covariate columns to rows
+    for col_name, (p_key, val_map) in results_per_dataset.items():
+        for idx, row in enumerate(rows):
+            v = val_map.get(idx)
+            row[col_name] = v if v is not None else ""
+
+    # Build output CSV text
     output = io.StringIO()
-    writer_out = csv.DictWriter(output, fieldnames=fieldnames + [new_col_name])
+    writer_out = csv.DictWriter(output, fieldnames=fieldnames + new_col_names)
     writer_out.writeheader()
-    for idx, row in enumerate(rows):
-        row[new_col_name] = extracted_values[idx] if extracted_values[idx] is not None else ""
+    for row in rows:
         writer_out.writerow(row)
 
     output.seek(0)
+
+    # BEAST GLM Matrix Package for points
+    if generate_matrices and location_col:
+        matched_loc_col = next((c for c in fieldnames if c.lower() == location_col.lower()), None)
+        if not matched_loc_col:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Specified location column '{location_col}' not found in CSV headers: {fieldnames}"
+            )
+
+        loc_data = {}
+        for r in rows:
+            loc_val = str(r.get(matched_loc_col, "")).strip()
+            if not loc_val:
+                continue
+            if loc_val not in loc_data:
+                loc_data[loc_val] = {
+                    "lats": [],
+                    "lons": [],
+                    "covs": {c: [] for c in new_col_names}
+                }
+            try:
+                lat = float(r[lat_col])
+                lon = float(r[lon_col])
+                loc_data[loc_val]["lats"].append(lat)
+                loc_data[loc_val]["lons"].append(lon)
+            except (ValueError, TypeError):
+                continue
+
+            for c in new_col_names:
+                c_val = r.get(c)
+                if c_val is not None and c_val != "":
+                    try:
+                        loc_data[loc_val]["covs"][c].append(float(c_val))
+                    except (ValueError, TypeError):
+                        pass
+
+        locations = sorted(list(loc_data.keys()))
+        if len(locations) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail=f"BEAST GLM matrix generation requires at least 2 distinct discrete locations in '{matched_loc_col}'. Found {len(locations)}: {locations}"
+            )
+
+        loc_centroids = {}
+        loc_cov_values = {c: {} for c in new_col_names}
+        for loc in locations:
+            lats = loc_data[loc]["lats"]
+            lons = loc_data[loc]["lons"]
+            loc_centroids[loc] = (statistics.mean(lats), statistics.mean(lons))
+            for c in new_col_names:
+                c_list = loc_data[loc]["covs"][c]
+                if not c_list:
+                    loc_val = 0.0
+                elif matrix_aggregation.lower() == "median":
+                    loc_val = statistics.median(c_list)
+                else:
+                    loc_val = statistics.mean(c_list)
+                loc_cov_values[c][loc] = loc_val
+
+        dist_mats, cov_mats, edge_rows, edge_headers = build_beast_glm_matrices(
+            locations, loc_centroids, loc_cov_values, new_col_names
+        )
+
+        edge_out = io.StringIO()
+        edge_writer = csv.writer(edge_out)
+        edge_writer.writerow(edge_headers)
+        for r in edge_rows:
+            edge_writer.writerow(r)
+
+        loc_summary_out = io.StringIO()
+        loc_writer = csv.writer(loc_summary_out)
+        summary_headers = ["location", "sample_count", "centroid_lat", "centroid_lon"]
+        for c in new_col_names:
+            summary_headers.append(f"{c}_aggregated_{matrix_aggregation}")
+        loc_writer.writerow(summary_headers)
+
+        for loc in locations:
+            lat, lon = loc_centroids[loc]
+            count = len(loc_data[loc]["lats"])
+            row_vals = [loc, count, round(lat, 5), round(lon, 5)]
+            for c in new_col_names:
+                row_vals.append(round(loc_cov_values[c][loc], 6))
+            loc_writer.writerow(row_vals)
+
+        readme_text = f"""========================================================================
+PHYLOCOV-EXPLORER: BEAST GLM PREDICTOR PACKAGE
+========================================================================
+Input Mode: Sample Coordinates (CSV)
+Extracted Datasets ({len(target_datasets)}): {", ".join(target_datasets)}
+Covariate Columns: {", ".join(new_col_names)}
+Discrete Locations ({len(locations)}): {", ".join(locations)}
+Sample Aggregation Function: {matrix_aggregation}
+
+HOW TO USE IN BEAST / BEAUti:
+------------------------------------------------------------------------
+1. In BEAUti (BEAST v1.10.x / v1.11.x), configure your discrete location trait.
+2. In 'Discrete Traits' or 'Sites', enable the Generalized Linear Model (GLM) extension.
+3. Import any of the K x K square matrix CSV files in this directory.
+4. Standardization:
+   - BEAST GLM diffusion models assume predictor values are standardized (mean=0, variance=1).
+   - Use the *_std.csv matrices (e.g. matrix_distance_log_std.csv).
+
+FILE DESCRIPTIONS:
+------------------------------------------------------------------------
+- enriched_points.csv:
+  Your original sample table with all extracted environmental covariate columns.
+- location_summary.csv:
+  Per-location centroids and aggregated environmental values across all layers.
+- glm_pairwise_edge_list.csv:
+  Tidy tabular edge-list of all pairwise transitions (ideal for R / ggplot2 / Seraphim).
+
+K x K SQUARE PREDICTOR MATRICES:
+- matrix_great_circle_distance_km.csv & _std.csv:
+  Great-circle geographic distance between point centroids.
+- matrix_great_circle_distance_log.csv & _std.csv:
+  Log-transformed geographic distance (recommended baseline GLM predictor).
+
+For each extracted environmental covariate layer:
+- matrix_{{cov}}_origin.csv & _std.csv: Emigration driver (origin value).
+- matrix_{{cov}}_destination.csv & _std.csv: Immigration driver (destination value).
+- matrix_{{cov}}_abs_difference.csv & _std.csv: Ecological distance / barrier effect.
+- matrix_{{cov}}_average.csv & _std.csv: Overall pairwise habitat suitability.
+
+Citation:
+Lemey, P., Rambaut, A., Bedford, T., Faria, N., Bieleman, M. A., Baele, G., ... & Suchard, M. A. (2014).
+Unifying viral genetics and human transportation data to predict the global transmission dynamics 
+of human influenza H3N2. PLoS Pathogens, 10(2), e1003932.
+========================================================================
+"""
+
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("enriched_points.csv", output.getvalue())
+            zf.writestr("location_summary.csv", loc_summary_out.getvalue())
+            zf.writestr("glm_pairwise_edge_list.csv", edge_out.getvalue())
+            zf.writestr("README_BEAST_GLM.txt", readme_text)
+
+            zf.writestr("matrix_great_circle_distance_km.csv", matrix_to_csv(locations, dist_mats["km"]))
+            zf.writestr("matrix_great_circle_distance_log.csv", matrix_to_csv(locations, dist_mats["log"]))
+            zf.writestr("matrix_great_circle_distance_log_std.csv", matrix_to_csv(locations, dist_mats["log_std"]))
+
+            for c in new_col_names:
+                m = cov_mats[c]
+                zf.writestr(f"matrix_{c}_origin.csv", matrix_to_csv(locations, m["origin"]))
+                zf.writestr(f"matrix_{c}_origin_std.csv", matrix_to_csv(locations, m["origin_std"]))
+                zf.writestr(f"matrix_{c}_destination.csv", matrix_to_csv(locations, m["destination"]))
+                zf.writestr(f"matrix_{c}_destination_std.csv", matrix_to_csv(locations, m["destination_std"]))
+                zf.writestr(f"matrix_{c}_abs_difference.csv", matrix_to_csv(locations, m["abs_diff"]))
+                zf.writestr(f"matrix_{c}_abs_difference_std.csv", matrix_to_csv(locations, m["abs_diff_std"]))
+                zf.writestr(f"matrix_{c}_average.csv", matrix_to_csv(locations, m["average"]))
+                zf.writestr(f"matrix_{c}_average_std.csv", matrix_to_csv(locations, m["average_std"]))
+
+        zip_buf.seek(0)
+        return StreamingResponse(
+            zip_buf,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="beast_glm_{ds_tag}_{orig_stem}.zip"'}
+        )
+
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode("utf-8")),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=extracted_{file.filename}"}
+        headers={"Content-Disposition": f"attachment; filename=extracted_{orig_stem}.csv"}
     )
+
