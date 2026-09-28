@@ -671,6 +671,43 @@ iframe.loaded {
   background-color: #30363d !important;
 }
 
+/* Leaflet layer control dark theme */
+.leaflet-control-layers {
+  background: rgba(22, 27, 34, 0.92) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid #30363d !important;
+  border-radius: 8px !important;
+  color: #c9d1d9 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5) !important;
+}
+
+.leaflet-control-layers-toggle {
+  background-color: #161b22 !important;
+  border-radius: 6px !important;
+}
+
+.leaflet-control-layers-expanded {
+  padding: 8px 14px !important;
+  font-family: inherit !important;
+  font-size: 0.85rem !important;
+  color: #e6edf3 !important;
+}
+
+.leaflet-control-layers-base label {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  margin: 6px 0 !important;
+  font-weight: 500 !important;
+}
+
+.leaflet-control-layers-base input[type="radio"] {
+  accent-color: #58a6ff !important;
+  cursor: pointer !important;
+}
+
 @media (max-width: 768px) {
   .map-wrapper {
     height: auto;

@@ -1040,12 +1040,46 @@ document.addEventListener("DOMContentLoaded", () => {
       };
     }
 
-    // Add Dark Base Map (CartoDB Dark Matter)
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: "abcd",
+    // Base Maps (No API key required, watermark-free, high-performance)
+    const esriDarkBase = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+      attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+      maxNativeZoom: 16,
       maxZoom: 20
-    }).addTo(map);
+    });
+    const esriDarkRef = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", {
+      attribution: '',
+      maxNativeZoom: 16,
+      maxZoom: 20
+    });
+    const darkCanvas = L.layerGroup([esriDarkBase, esriDarkRef]);
+
+    const esriSatelliteBase = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and GIS User Community',
+      maxNativeZoom: 19,
+      maxZoom: 20
+    });
+    const esriSatelliteRef = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {
+      attribution: '',
+      maxNativeZoom: 19,
+      maxZoom: 20
+    });
+    const satellite = L.layerGroup([esriSatelliteBase, esriSatelliteRef]);
+
+    const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
+    });
+
+    // Default to Dark Canvas
+    darkCanvas.addTo(map);
+
+    // Basemap switcher control in top-right
+    const baseMaps = {
+      "🌙 Dark Canvas": darkCanvas,
+      "🛰️ Satellite": satellite,
+      "🗺️ Street Map": osm
+    };
+    L.control.layers(baseMaps, null, { position: "topright", collapsed: true }).addTo(map);
 
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
