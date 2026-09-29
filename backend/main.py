@@ -979,25 +979,80 @@ def compute_geojson_centroid(geometry: dict) -> tuple[float, float]:
     return avg_lat, avg_lon
 
 
-def parse_spatial_file(contents: bytes, filename: str) -> tuple[str, Optional[list[dict]], Optional[list[str]]]:
+def compute_bbox_from_features(features: list[dict]) -> Optional[dict]:
+    """Computes [minLat, minLon, maxLat, maxLon] bounding box from GeoJSON features."""
+    all_lats, all_lons = [], []
+    def extract_pts(c):
+        if not c:
+            return
+        if isinstance(c[0], (int, float)):
+            all_lons.append(c[0])
+            all_lats.append(c[1])
+        else:
+            for sub in c:
+                extract_pts(sub)
+    for f in features:
+        geom = f.get("geometry") or {}
+        extract_pts(geom.get("coordinates", []))
+    if all_lats and all_lons:
+        return {
+            "minLat": round(min(all_lats), 5),
+            "minLon": round(min(all_lons), 5),
+            "maxLat": round(max(all_lats), 5),
+            "maxLon": round(max(all_lons), 5)
+        }
+    return None
+
+
+def parse_spatial_file(contents: bytes, filename: str, layer_name: Optional[str] = None) -> tuple[str, Optional[list[dict]], Optional[list[str]]]:
     """
     Parses an uploaded spatial or tabular file.
     Returns (mode, features, property_keys).
     mode can be 'polygon', 'point_geojson', or 'tabular'.
+    Supports layer_name selection for multi-layer zipped shapefile archives.
     """
     lower_name = filename.lower()
     if lower_name.endswith(".zip"):
         # Zipped Shapefile
         try:
             with zipfile.ZipFile(io.BytesIO(contents)) as z:
-                shp_name = next((n for n in z.namelist() if n.lower().endswith(".shp") and not n.startswith("__MACOSX")), None)
-                dbf_name = next((n for n in z.namelist() if n.lower().endswith(".dbf") and not n.startswith("__MACOSX")), None)
-                shx_name = next((n for n in z.namelist() if n.lower().endswith(".shx") and not n.startswith("__MACOSX")), None)
-                cpg_name = next((n for n in z.namelist() if n.lower().endswith(".cpg") and not n.startswith("__MACOSX")), None)
-                if not shp_name or not dbf_name:
+                all_shps = [n for n in z.namelist() if n.lower().endswith(".shp") and not n.startswith("__MACOSX")]
+                if not all_shps:
                     raise HTTPException(
                         status_code=400,
-                        detail="Zipped shapefile must contain both .shp and .dbf files."
+                        detail="Zipped shapefile must contain at least one .shp file."
+                    )
+
+                layers_info = []
+                for s in all_shps:
+                    stem = s.rsplit(".", 1)[0]
+                    base_name = stem.rsplit("/", 1)[-1]
+                    layers_info.append({"full_path": s, "stem": stem, "name": base_name})
+
+                # Determine target layer
+                chosen = None
+                if layer_name and isinstance(layer_name, str):
+                    for l in layers_info:
+                        if layer_name.lower() in [l["name"].lower(), l["stem"].lower(), l["full_path"].lower()]:
+                            chosen = l
+                            break
+                if not chosen:
+                    chosen = layers_info[0]
+
+                shp_name = chosen["full_path"]
+                target_stem_lower = chosen["stem"].lower()
+                dbf_name = next((n for n in z.namelist() if n.lower() == f"{target_stem_lower}.dbf" and not n.startswith("__MACOSX")), None)
+                shx_name = next((n for n in z.namelist() if n.lower() == f"{target_stem_lower}.shx" and not n.startswith("__MACOSX")), None)
+                cpg_name = next((n for n in z.namelist() if n.lower() == f"{target_stem_lower}.cpg" and not n.startswith("__MACOSX")), None)
+
+                if not dbf_name:
+                    base_dbf = chosen["name"].lower() + ".dbf"
+                    dbf_name = next((n for n in z.namelist() if n.rsplit("/", 1)[-1].lower() == base_dbf and not n.startswith("__MACOSX")), None)
+
+                if not dbf_name:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Shapefile layer '{chosen['name']}' is missing its matching .dbf attribute table."
                     )
 
                 encoding = "utf-8"
@@ -1014,7 +1069,7 @@ def parse_spatial_file(contents: bytes, filename: str) -> tuple[str, Optional[li
                 sf = shapefile.Reader(shp=shp_io, dbf=dbf_io, shx=shx_io, encoding=encoding, encodingErrors="replace")
                 features = sf.__geo_interface__.get("features", [])
                 if not features:
-                    raise HTTPException(status_code=400, detail="No valid features found in the uploaded shapefile.")
+                    raise HTTPException(status_code=400, detail=f"No valid features found in layer '{chosen['name']}'.")
 
                 prop_keys = []
                 if sf.fields:
@@ -1319,6 +1374,159 @@ def extract_single_dataset_values(
     return preset_key, col_name, val_map
 
 
+@app.post("/inspect-boundary")
+async def inspect_boundary(
+    file: UploadFile = File(...),
+    layer_name: Optional[str] = Form(None)
+):
+    """
+    Inspects an uploaded spatial boundary file (GeoJSON or Zipped ESRI Shapefile).
+    Detects available layers in ZIP archives, extracts attribute columns, calculates bounding box,
+    and returns GeoJSON features for client-side Leaflet map rendering.
+    """
+    contents = await file.read()
+    orig_filename = file.filename or "boundary.zip"
+    lower_name = orig_filename.lower()
+
+    if lower_name.endswith(".zip"):
+        try:
+            with zipfile.ZipFile(io.BytesIO(contents)) as z:
+                all_shps = [n for n in z.namelist() if n.lower().endswith(".shp") and not n.startswith("__MACOSX")]
+                if not all_shps:
+                    raise HTTPException(status_code=400, detail="No .shp file found in uploaded ZIP archive.")
+
+                layers_info = []
+                for s in all_shps:
+                    stem = s.rsplit(".", 1)[0]
+                    base_name = stem.rsplit("/", 1)[-1]
+                    layers_info.append({"full_path": s, "stem": stem, "name": base_name})
+
+                # Determine target layer
+                chosen = None
+                if layer_name and isinstance(layer_name, str):
+                    for l in layers_info:
+                        if layer_name.lower() in [l["name"].lower(), l["stem"].lower(), l["full_path"].lower()]:
+                            chosen = l
+                            break
+                if not chosen:
+                    chosen = layers_info[0]
+
+                shp_name = chosen["full_path"]
+                target_stem_lower = chosen["stem"].lower()
+                dbf_name = next((n for n in z.namelist() if n.lower() == f"{target_stem_lower}.dbf" and not n.startswith("__MACOSX")), None)
+                shx_name = next((n for n in z.namelist() if n.lower() == f"{target_stem_lower}.shx" and not n.startswith("__MACOSX")), None)
+                cpg_name = next((n for n in z.namelist() if n.lower() == f"{target_stem_lower}.cpg" and not n.startswith("__MACOSX")), None)
+
+                if not dbf_name:
+                    base_dbf = chosen["name"].lower() + ".dbf"
+                    dbf_name = next((n for n in z.namelist() if n.rsplit("/", 1)[-1].lower() == base_dbf and not n.startswith("__MACOSX")), None)
+
+                if not dbf_name:
+                    raise HTTPException(status_code=400, detail=f"Layer '{chosen['name']}' is missing its matching .dbf attribute table.")
+
+                encoding = "utf-8"
+                if cpg_name:
+                    try:
+                        encoding = z.read(cpg_name).decode("utf-8", errors="ignore").strip()
+                    except Exception:
+                        pass
+
+                sf = shapefile.Reader(
+                    shp=io.BytesIO(z.read(shp_name)),
+                    dbf=io.BytesIO(z.read(dbf_name)),
+                    shx=io.BytesIO(z.read(shx_name)) if shx_name else None,
+                    encoding=encoding,
+                    encodingErrors="replace"
+                )
+                features = sf.__geo_interface__.get("features", [])
+                if not features:
+                    raise HTTPException(status_code=400, detail=f"No valid features found in layer '{chosen['name']}'.")
+
+                prop_keys = []
+                if sf.fields:
+                    prop_keys = [f[0] for f in sf.fields if f[0] != "DeletionFlag"]
+                elif features and features[0].get("properties"):
+                    prop_keys = list(features[0]["properties"].keys())
+
+                sample_geom = features[0].get("geometry", {})
+                sample_lat, sample_lon = compute_geojson_centroid(sample_geom)
+                if abs(sample_lat) > 90 or abs(sample_lon) > 180:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"The uploaded shapefile coordinates appear to be in a projected coordinate system "
+                            f"(centroid: {sample_lon:.1f}, {sample_lat:.1f}) rather than WGS84 geographic degrees (EPSG:4326). "
+                            "Please reproject your shapefile to EPSG:4326 (WGS84) before uploading."
+                        )
+                    )
+
+                bbox = compute_bbox_from_features(features)
+
+                return {
+                    "file_type": "shapefile_zip",
+                    "layers": [l["name"] for l in layers_info],
+                    "layer_stems": [l["stem"] for l in layers_info],
+                    "selected_layer": chosen["name"],
+                    "selected_stem": chosen["stem"],
+                    "feature_count": len(features),
+                    "property_keys": prop_keys,
+                    "bbox": bbox,
+                    "geojson": {
+                        "type": "FeatureCollection",
+                        "features": features
+                    }
+                }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to inspect shapefile: {str(e)}")
+
+    elif lower_name.endswith(".geojson") or lower_name.endswith(".json"):
+        try:
+            text = contents.decode("utf-8")
+        except Exception:
+            text = contents.decode("latin-1", errors="replace")
+
+        try:
+            data = json.loads(text)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON/GeoJSON: {str(e)}")
+
+        features = []
+        if data.get("type") == "FeatureCollection":
+            features = data.get("features", [])
+        elif data.get("type") == "Feature":
+            features = [data]
+        elif data.get("type") == "GeometryCollection":
+            features = [{"type": "Feature", "geometry": g, "properties": {}} for g in data.get("geometries", [])]
+
+        if not features:
+            raise HTTPException(status_code=400, detail="No valid features found in GeoJSON.")
+
+        prop_keys = []
+        if features and features[0].get("properties"):
+            prop_keys = list(features[0]["properties"].keys())
+
+        bbox = compute_bbox_from_features(features)
+
+        return {
+            "file_type": "geojson",
+            "layers": [],
+            "layer_stems": [],
+            "selected_layer": None,
+            "selected_stem": None,
+            "feature_count": len(features),
+            "property_keys": prop_keys,
+            "bbox": bbox,
+            "geojson": {
+                "type": "FeatureCollection",
+                "features": features
+            }
+        }
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported boundary file format. Please upload .zip (shapefile) or .geojson/.json.")
+
+
 @app.post("/extract")
 async def extract_glm_covariates(
     file: UploadFile = File(...),
@@ -1328,7 +1536,8 @@ async def extract_glm_covariates(
     end_date: Optional[str] = Form(None),
     generate_matrices: bool = Form(False),
     location_col: Optional[str] = Form(None),
-    matrix_aggregation: str = Form("mean")
+    matrix_aggregation: str = Form("mean"),
+    layer_name: Optional[str] = Form(None)
 ):
     """
     Endpoint for Pipeline 2 (Discrete Phylodynamics GLM covariate extraction).
@@ -1359,7 +1568,7 @@ async def extract_glm_covariates(
         ds_tag = f"multi_{len(target_datasets)}_covariates"
 
     # Detect file type: spatial (shapefile / GeoJSON) vs tabular (CSV/Excel)
-    file_type, spatial_features, spatial_prop_keys = parse_spatial_file(contents, orig_filename)
+    file_type, spatial_features, spatial_prop_keys = parse_spatial_file(contents, orig_filename, layer_name=layer_name)
 
     # =========================================================================
     # BRANCH A: SPATIAL BOUNDARIES (POLYGONS / GEOJSON / ZIPPED SHAPEFILES)

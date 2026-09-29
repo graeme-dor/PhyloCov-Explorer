@@ -1,4 +1,15 @@
 import './style.css';
+import countryBounds from './country_bboxes.json';
+
+const CONTINENT_BOUNDS = {
+  "Africa": [[-35.0, -18.0], [38.0, 52.0]],
+  "Antarctica": [[-90.0, -180.0], [-60.0, 180.0]],
+  "Asia": [[1.0, 26.0], [77.0, 180.0]],
+  "Europe": [[34.0, -25.0], [72.0, 45.0]],
+  "North America": [[7.0, -168.0], [84.0, -52.0]],
+  "Oceania": [[-50.0, 110.0], [0.0, 180.0]],
+  "South America": [[-56.0, -82.0], [13.0, -34.0]]
+};
 
 document.addEventListener("DOMContentLoaded", () => {
   const BACKEND_URL = "https://phylocov-export-backend-719941553080.europe-west1.run.app";
@@ -1097,6 +1108,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let glmUploadedBBoxLayer = null;
     let glmUploadedGeoJsonLayer = null;
     let glmDatasetSelect = null;
+    let selectedShapefileLayer = null;
 
     let isDrawingMode = false;
     let drawStartLatLng = null;
@@ -1469,6 +1481,37 @@ document.addEventListener("DOMContentLoaded", () => {
     const roiTagsContainer = document.getElementById("roi_tags_container");
     let selectedROIs = new Set();
 
+    function zoomToSelectedROIs() {
+      const type = document.querySelector('input[name="roi_type"]:checked')?.value || "country";
+      if (selectedROIs.size === 0) return;
+      let minLat = 90, minLon = 180, maxLat = -90, maxLon = -180;
+      let found = false;
+      selectedROIs.forEach(name => {
+        let b = null;
+        if (type === "country" && countryBounds[name]) {
+          b = countryBounds[name];
+          minLat = Math.min(minLat, b[0]);
+          minLon = Math.min(minLon, b[1]);
+          maxLat = Math.max(maxLat, b[2]);
+          maxLon = Math.max(maxLon, b[3]);
+          found = true;
+        } else if (type === "region" && CONTINENT_BOUNDS[name]) {
+          const cb = CONTINENT_BOUNDS[name];
+          minLat = Math.min(minLat, cb[0][0]);
+          minLon = Math.min(minLon, cb[0][1]);
+          maxLat = Math.max(maxLat, cb[1][0]);
+          maxLon = Math.max(maxLon, cb[1][1]);
+          found = true;
+        }
+      });
+      if (found) {
+        map.fitBounds([[minLat, minLon], [maxLat, maxLon]], {
+          ...getMapPadding(40),
+          maxZoom: type === "country" ? 7 : 4
+        });
+      }
+    }
+
     function renderROITags() {
       if (!roiTagsContainer) return;
       roiTagsContainer.innerHTML = "";
@@ -1479,6 +1522,7 @@ document.addEventListener("DOMContentLoaded", () => {
         tag.querySelector("button").addEventListener("click", () => {
           selectedROIs.delete(roi);
           renderROITags();
+          if (selectedROIs.size > 0) zoomToSelectedROIs();
           triggerMapUpdate();
         });
         roiTagsContainer.appendChild(tag);
@@ -1490,6 +1534,7 @@ document.addEventListener("DOMContentLoaded", () => {
         selectedROIs.add(e.target.value);
         e.target.value = ""; // Reset dropdown
         renderROITags();
+        zoomToSelectedROIs();
         triggerMapUpdate();
       }
     }
@@ -2123,6 +2168,7 @@ document.addEventListener("DOMContentLoaded", () => {
       function renderGLMPointsOnMap(points) {
         if (glmUploadedBBoxLayer) map.removeLayer(glmUploadedBBoxLayer);
         if (glmUploadedMarkersLayer) map.removeLayer(glmUploadedMarkersLayer);
+        if (glmUploadedGeoJsonLayer) map.removeLayer(glmUploadedGeoJsonLayer);
 
         const markers = points.map(p => L.circleMarker([p.lat, p.lon], {
           radius: 5,
@@ -2224,6 +2270,183 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
+      async function inspectAndRenderBoundary(file, requestedLayer = null) {
+        setGLMInputMode("boundary");
+        glmUploadText.textContent = `Inspecting ${file.name}...`;
+        glmUploadStatus.textContent = "🔍 Parsing geometries, coordinate reference system, and attributes...";
+        glmUploadStatus.style.color = "#58a6ff";
+        glmUploadStatus.style.display = "block";
+
+        const formData = new FormData();
+        formData.append("file", file);
+        if (requestedLayer) {
+          formData.append("layer_name", requestedLayer);
+        }
+
+        try {
+          const resp = await fetch(`${BACKEND_URL}/inspect-boundary`, {
+            method: "POST",
+            body: formData
+          });
+
+          if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            throw new Error(errData.detail || `Server error: ${resp.status}`);
+          }
+
+          const data = await resp.json();
+          selectedGLMFile = file;
+          selectedGLMFileToSend = file;
+          selectedShapefileLayer = data.selected_layer || data.selected_stem || null;
+
+          const isZip = file.name.toLowerCase().endsWith(".zip");
+          const layerTag = (isZip && data.selected_layer) ? ` (Layer: ${data.selected_layer})` : "";
+          glmUploadText.textContent = `Selected: ${file.name}${layerTag} (${(file.size / 1024).toFixed(1)} KB)`;
+          glmUploadStatus.textContent = `✓ Loaded ${data.feature_count} boundary polygon${data.feature_count > 1 ? "s" : ""} across ${data.property_keys?.length || 0} attributes.`;
+          glmUploadStatus.style.color = "#3fb950";
+
+          // Shapefile multi-layer dropdown handling
+          const layersGroup = document.getElementById("glm_shapefile_layers_group");
+          const layerSelect = document.getElementById("glm_shapefile_layer_select");
+          const layerHint = document.getElementById("glm_shapefile_layer_hint");
+
+          if (layersGroup && layerSelect) {
+            if (data.layers && data.layers.length > 1) {
+              layersGroup.style.display = "block";
+              layerSelect.innerHTML = "";
+              data.layers.forEach(lName => {
+                const opt = document.createElement("option");
+                opt.value = lName;
+                opt.textContent = lName;
+                if (lName === data.selected_layer) opt.selected = true;
+                layerSelect.appendChild(opt);
+              });
+              if (layerHint) {
+                layerHint.textContent = `Detected ${data.layers.length} administrative layers in this archive. Switching layer will re-render boundaries and update location attributes.`;
+              }
+              layerSelect.onchange = (ev) => {
+                inspectAndRenderBoundary(selectedGLMFile, ev.target.value);
+              };
+            } else {
+              layersGroup.style.display = "none";
+            }
+          }
+
+          // Render polygons on map
+          if (data.geojson) {
+            renderGLMPolygonsOnMap(data.geojson);
+          }
+
+          // Date Mode Handling
+          const modeGroup = document.getElementById("glm_mode_group");
+          const exactRadio = document.querySelector('input[name="glm_date_mode"][value="exact"]');
+          const rangeRadio = document.querySelector('input[name="glm_date_mode"][value="range"]');
+          if (modeGroup) modeGroup.style.display = "block";
+
+          const sampleProps = data.geojson?.features?.[0]?.properties || {};
+          const dateKey = Object.keys(sampleProps).find(k => ["date", "time", "datetime", "year_month_day"].includes(k.toLowerCase()));
+          if (dateKey) {
+            if (exactRadio) {
+              exactRadio.disabled = false;
+              exactRadio.checked = true;
+            }
+            setGLMDateExtractionMode("exact");
+          } else {
+            if (exactRadio) exactRadio.disabled = true;
+            if (rangeRadio) rangeRadio.checked = true;
+            setGLMDateExtractionMode("range");
+          }
+
+          // Setup BEAST GLM Matrix Options
+          const matrixOptionsGroup = document.getElementById("glm_matrix_options_group");
+          const matrixCheckbox = document.getElementById("glm_generate_matrices_checkbox");
+          const matrixSettings = document.getElementById("glm_matrix_settings");
+          const locationSelect = document.getElementById("glm_location_col_select");
+          const locationHint = document.getElementById("glm_detected_locations_hint");
+
+          if (matrixOptionsGroup && locationSelect) {
+            matrixOptionsGroup.style.display = "block";
+            locationSelect.innerHTML = '<option value="" disabled selected>Select location attribute...</option>';
+
+            const candidateCols = data.property_keys || [];
+            candidateCols.forEach(col => {
+              const opt = document.createElement("option");
+              opt.value = col;
+              opt.textContent = col;
+              locationSelect.appendChild(opt);
+            });
+
+            const updateHint = (colName) => {
+              if (!colName || !data.geojson?.features) {
+                if (locationHint) locationHint.textContent = "";
+                return;
+              }
+              const uniqueLocs = Array.from(new Set(data.geojson.features.map(f => f.properties?.[colName]?.toString().trim()).filter(Boolean)));
+              if (locationHint) {
+                if (uniqueLocs.length >= 2) {
+                  const sampleList = uniqueLocs.slice(0, 4).join(", ") + (uniqueLocs.length > 4 ? `, +${uniqueLocs.length - 4} more` : "");
+                  locationHint.textContent = `✓ Found ${uniqueLocs.length} discrete locations (${sampleList})`;
+                  locationHint.style.color = "#3fb950";
+                } else if (uniqueLocs.length === 1) {
+                  locationHint.textContent = `⚠️ Only 1 location found ("${uniqueLocs[0]}"). BEAST GLMs require at least 2 distinct states.`;
+                  locationHint.style.color = "#d29922";
+                } else {
+                  locationHint.textContent = "No valid values found in this attribute.";
+                  locationHint.style.color = "#f85149";
+                }
+              }
+            };
+
+            locationSelect.onchange = (ev) => updateHint(ev.target.value);
+
+            const autoCol = candidateCols.find(col => {
+              const lower = col.toLowerCase();
+              return ["name", "name_1", "name_0", "admin", "region", "province", "state", "id", "iso_a3"].some(k => lower.includes(k));
+            });
+
+            if (autoCol) {
+              locationSelect.value = autoCol;
+              if (matrixCheckbox) matrixCheckbox.checked = true;
+              if (matrixSettings) matrixSettings.style.display = "flex";
+              updateHint(autoCol);
+            } else if (candidateCols.length > 0) {
+              locationSelect.value = candidateCols[0];
+              if (matrixCheckbox) matrixCheckbox.checked = true;
+              if (matrixSettings) matrixSettings.style.display = "flex";
+              updateHint(candidateCols[0]);
+            }
+
+            if (matrixCheckbox) {
+              matrixCheckbox.onchange = (ev) => {
+                if (matrixSettings) {
+                  matrixSettings.style.display = ev.target.checked ? "flex" : "none";
+                }
+              };
+            }
+          }
+
+          updateGLMSubmitBtnState();
+          activePipeline = "discrete";
+
+          // If no covariate is selected, ensure no EE layer is displayed
+          if (!glmDatasetSelect.value && currentEELayer) {
+            map.removeLayer(currentEELayer);
+            currentEELayer = null;
+          } else if (glmDatasetSelect.value) {
+            triggerMapUpdate();
+          }
+
+        } catch (err) {
+          console.error("Boundary inspection error:", err);
+          glmUploadStatus.textContent = "Error: " + (err.message || "Failed to parse boundary archive.");
+          glmUploadStatus.style.color = "#f85149";
+          glmUploadStatus.style.display = "block";
+          selectedGLMFile = null;
+          selectedGLMFileToSend = null;
+          updateGLMSubmitBtnState();
+        }
+      }
+
       function handleGLMFileSelection(file) {
         const ext = file.name.split('.').pop().toLowerCase();
         const validExtensions = ["csv", "txt", "tsv", "xlsx", "xls", "geojson", "json", "zip"];
@@ -2241,187 +2464,16 @@ document.addEventListener("DOMContentLoaded", () => {
         const isZip = ext === "zip";
         const isExcel = ext === "xlsx" || ext === "xls";
 
-        if (isGeoJSON) {
-          setGLMInputMode("boundary");
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            try {
-              const geojson = JSON.parse(e.target.result);
-              let features = [];
-              if (geojson.type === "FeatureCollection") {
-                features = geojson.features || [];
-              } else if (geojson.type === "Feature") {
-                features = [geojson];
-              }
-
-              if (features.length === 0) {
-                throw new Error("GeoJSON contains no features.");
-              }
-
-              selectedGLMFile = file;
-              selectedGLMFileToSend = file;
-
-              glmUploadText.textContent = `Selected GeoJSON: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
-              glmUploadStatus.style.display = "none";
-
-              renderGLMPolygonsOnMap(geojson);
-
-              // Date Mode Handling
-              const modeGroup = document.getElementById("glm_mode_group");
-              const exactRadio = document.querySelector('input[name="glm_date_mode"][value="exact"]');
-              const rangeRadio = document.querySelector('input[name="glm_date_mode"][value="range"]');
-
-              if (modeGroup) modeGroup.style.display = "block";
-
-              // Check if properties have date
-              const sampleProps = features[0].properties || {};
-              const dateKey = Object.keys(sampleProps).find(k => ["date", "time", "datetime", "year_month_day"].includes(k.toLowerCase()));
-              if (dateKey) {
-                if (exactRadio) {
-                  exactRadio.disabled = false;
-                  exactRadio.checked = true;
-                }
-                setGLMDateExtractionMode("exact");
-              } else {
-                if (exactRadio) exactRadio.disabled = true;
-                if (rangeRadio) rangeRadio.checked = true;
-                setGLMDateExtractionMode("range");
-              }
-
-              // Setup BEAST GLM Matrix Options
-              const matrixOptionsGroup = document.getElementById("glm_matrix_options_group");
-              const matrixCheckbox = document.getElementById("glm_generate_matrices_checkbox");
-              const matrixSettings = document.getElementById("glm_matrix_settings");
-              const locationSelect = document.getElementById("glm_location_col_select");
-              const locationHint = document.getElementById("glm_detected_locations_hint");
-
-              if (matrixOptionsGroup && locationSelect) {
-                matrixOptionsGroup.style.display = "block";
-                locationSelect.innerHTML = '<option value="" disabled selected>Select location attribute...</option>';
-
-                const candidateCols = Object.keys(sampleProps);
-                candidateCols.forEach(col => {
-                  const opt = document.createElement("option");
-                  opt.value = col;
-                  opt.textContent = col;
-                  locationSelect.appendChild(opt);
-                });
-
-                const updateHint = (colName) => {
-                  if (!colName) {
-                    if (locationHint) locationHint.textContent = "";
-                    return;
-                  }
-                  const uniqueLocs = Array.from(new Set(features.map(f => f.properties?.[colName]?.toString().trim()).filter(Boolean)));
-                  if (locationHint) {
-                    if (uniqueLocs.length >= 2) {
-                      const sampleList = uniqueLocs.slice(0, 4).join(", ") + (uniqueLocs.length > 4 ? `, +${uniqueLocs.length - 4} more` : "");
-                      locationHint.textContent = `✓ Found ${uniqueLocs.length} discrete locations (${sampleList})`;
-                      locationHint.style.color = "#3fb950";
-                    } else if (uniqueLocs.length === 1) {
-                      locationHint.textContent = `⚠️ Only 1 location found ("${uniqueLocs[0]}"). BEAST GLMs require at least 2 distinct states.`;
-                      locationHint.style.color = "#d29922";
-                    } else {
-                      locationHint.textContent = "No valid values found in this attribute.";
-                      locationHint.style.color = "#f85149";
-                    }
-                  }
-                };
-
-                locationSelect.onchange = (ev) => updateHint(ev.target.value);
-
-                const autoCol = candidateCols.find(col => {
-                  const lower = col.toLowerCase();
-                  return ["name", "name_1", "name_0", "admin", "region", "province", "state", "id", "iso_a3"].some(k => lower.includes(k));
-                });
-
-                if (autoCol) {
-                  locationSelect.value = autoCol;
-                  if (matrixCheckbox) matrixCheckbox.checked = true;
-                  if (matrixSettings) matrixSettings.style.display = "flex";
-                  updateHint(autoCol);
-                } else {
-                  if (matrixCheckbox) matrixCheckbox.checked = true;
-                  if (matrixSettings) matrixSettings.style.display = "flex";
-                  if (candidateCols.length > 0) {
-                    locationSelect.value = candidateCols[0];
-                    updateHint(candidateCols[0]);
-                  }
-                }
-
-                if (matrixCheckbox) {
-                  matrixCheckbox.onchange = (ev) => {
-                    if (matrixSettings) {
-                      matrixSettings.style.display = ev.target.checked ? "flex" : "none";
-                    }
-                  };
-                }
-              }
-
-              updateGLMSubmitBtnState();
-              activePipeline = "discrete";
-              triggerMapUpdate();
-
-            } catch (err) {
-              console.error("GeoJSON parse error:", err);
-              glmUploadStatus.textContent = "Error: " + (err.message || "Invalid GeoJSON file.");
-              glmUploadStatus.style.color = "#f85149";
-              glmUploadStatus.style.display = "block";
-              selectedGLMFile = null;
-              selectedGLMFileToSend = null;
-              updateGLMSubmitBtnState();
-            }
-          };
-          reader.readAsText(file);
-          return;
-        }
-
-        if (isZip) {
-          setGLMInputMode("boundary");
-          selectedGLMFile = file;
-          selectedGLMFileToSend = file;
-
-          glmUploadText.textContent = `Selected Shapefile: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
-          glmUploadStatus.textContent = "📦 Zipped Shapefile archive loaded. Backend will extract boundary polygons, compute zonal statistics, and calculate BEAST GLM predictor matrices.";
-          glmUploadStatus.style.color = "#58a6ff";
-          glmUploadStatus.style.display = "block";
-
-          const modeGroup = document.getElementById("glm_mode_group");
-          const exactRadio = document.querySelector('input[name="glm_date_mode"][value="exact"]');
-          const rangeRadio = document.querySelector('input[name="glm_date_mode"][value="range"]');
-          if (modeGroup) modeGroup.style.display = "block";
-          if (exactRadio) exactRadio.disabled = true;
-          if (rangeRadio) rangeRadio.checked = true;
-          setGLMDateExtractionMode("range");
-
-          // Setup matrix options
-          const matrixOptionsGroup = document.getElementById("glm_matrix_options_group");
-          const matrixCheckbox = document.getElementById("glm_generate_matrices_checkbox");
-          const matrixSettings = document.getElementById("glm_matrix_settings");
-          const locationHint = document.getElementById("glm_detected_locations_hint");
-
-          if (matrixOptionsGroup) {
-            matrixOptionsGroup.style.display = "block";
-            if (matrixCheckbox) matrixCheckbox.checked = true;
-            if (matrixSettings) matrixSettings.style.display = "flex";
-            if (locationHint) {
-              locationHint.textContent = "ℹ Location attribute will be auto-detected from shapefile DBF (e.g. NAME, ADM1, REGION).";
-              locationHint.style.color = "#58a6ff";
-            }
-          }
-
-          if (glmUploadedGeoJsonLayer) map.removeLayer(glmUploadedGeoJsonLayer);
-          if (glmUploadedMarkersLayer) map.removeLayer(glmUploadedMarkersLayer);
-          if (glmUploadedBBoxLayer) map.removeLayer(glmUploadedBBoxLayer);
-
-          updateGLMSubmitBtnState();
-          activePipeline = "discrete";
-          triggerMapUpdate();
+        if (isGeoJSON || isZip) {
+          inspectAndRenderBoundary(file);
           return;
         }
 
         // Tabular Points (CSV / TSV / Excel)
         setGLMInputMode("point");
+        selectedShapefileLayer = null;
+        const layersGroup = document.getElementById("glm_shapefile_layers_group");
+        if (layersGroup) layersGroup.style.display = "none";
         if (glmUploadedGeoJsonLayer) map.removeLayer(glmUploadedGeoJsonLayer);
 
         const processFileContent = (text, originalFile) => {
@@ -2549,7 +2601,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
           updateGLMSubmitBtnState();
           activePipeline = "discrete";
-          triggerMapUpdate();
+          if (!glmDatasetSelect.value && currentEELayer) {
+            map.removeLayer(currentEELayer);
+            currentEELayer = null;
+          } else if (glmDatasetSelect.value) {
+            triggerMapUpdate();
+          }
         };
 
         if (isExcel) {
@@ -2628,13 +2685,43 @@ document.addEventListener("DOMContentLoaded", () => {
           updateGLMSubmitBtnState();
           const previewRadio = document.querySelector('input[name="glm_preview_dataset"]:checked');
           const checked = getSelectedGLMDatasets();
-          if (previewRadio && !cb.checked && previewRadio.value === cb.value && checked.length > 0) {
-            const nextRadio = document.querySelector(`input[name="glm_preview_dataset"][value="${checked[0]}"]`);
-            if (nextRadio) {
-              nextRadio.checked = true;
-              if (glmDatasetSelect) {
-                glmDatasetSelect.value = checked[0];
-                glmDatasetSelect.dispatchEvent(new Event("change"));
+          
+          if (cb.checked) {
+            // If no preview is currently selected, set preview to this newly checked dataset
+            if (!previewRadio || !previewRadio.value) {
+              const myRadio = document.querySelector(`input[name="glm_preview_dataset"][value="${cb.value}"]`);
+              if (myRadio) {
+                myRadio.checked = true;
+                if (glmDatasetSelect) {
+                  glmDatasetSelect.value = cb.value;
+                  glmDatasetSelect.dispatchEvent(new Event("change"));
+                }
+              }
+            }
+          } else {
+            // If user unchecked the dataset currently being previewed
+            if (previewRadio && previewRadio.value === cb.value) {
+              if (checked.length > 0) {
+                const nextRadio = document.querySelector(`input[name="glm_preview_dataset"][value="${checked[0]}"]`);
+                if (nextRadio) {
+                  nextRadio.checked = true;
+                  if (glmDatasetSelect) {
+                    glmDatasetSelect.value = checked[0];
+                    glmDatasetSelect.dispatchEvent(new Event("change"));
+                  }
+                }
+              } else {
+                // Revert to no preview
+                const noneRadio = document.getElementById("glm_preview_none");
+                if (noneRadio) noneRadio.checked = true;
+                if (glmDatasetSelect) {
+                  glmDatasetSelect.value = "";
+                  glmDatasetSelect.dispatchEvent(new Event("change"));
+                }
+                if (currentEELayer) {
+                  map.removeLayer(currentEELayer);
+                  currentEELayer = null;
+                }
               }
             }
           }
@@ -2646,6 +2733,18 @@ document.addEventListener("DOMContentLoaded", () => {
         rb.addEventListener("change", (e) => {
           activePipeline = "discrete";
           const val = e.target.value;
+          if (!val) {
+            // No preview selected
+            if (glmDatasetSelect) {
+              glmDatasetSelect.value = "";
+              glmDatasetSelect.dispatchEvent(new Event("change"));
+            }
+            if (currentEELayer) {
+              map.removeLayer(currentEELayer);
+              currentEELayer = null;
+            }
+            return;
+          }
           const correspondingCb = document.querySelector(`input[name="glm_datasets"][value="${val}"]`);
           if (correspondingCb && !correspondingCb.checked) {
             correspondingCb.checked = true;
@@ -2665,11 +2764,32 @@ document.addEventListener("DOMContentLoaded", () => {
         selectAllBtn.addEventListener("click", () => {
           document.querySelectorAll('input[name="glm_datasets"]').forEach(cb => cb.checked = true);
           updateGLMSubmitBtnState();
+          const previewRadio = document.querySelector('input[name="glm_preview_dataset"]:checked');
+          if (!previewRadio || !previewRadio.value) {
+            const firstRadio = document.querySelector('input[name="glm_preview_dataset"][value="chirps"]');
+            if (firstRadio) {
+              firstRadio.checked = true;
+              if (glmDatasetSelect) {
+                glmDatasetSelect.value = "chirps";
+                glmDatasetSelect.dispatchEvent(new Event("change"));
+              }
+            }
+          }
         });
       }
       if (clearAllBtn) {
         clearAllBtn.addEventListener("click", () => {
           document.querySelectorAll('input[name="glm_datasets"]').forEach(cb => cb.checked = false);
+          const noneRadio = document.getElementById("glm_preview_none");
+          if (noneRadio) noneRadio.checked = true;
+          if (glmDatasetSelect) {
+            glmDatasetSelect.value = "";
+            glmDatasetSelect.dispatchEvent(new Event("change"));
+          }
+          if (currentEELayer) {
+            map.removeLayer(currentEELayer);
+            currentEELayer = null;
+          }
           updateGLMSubmitBtnState();
         });
       }
@@ -2752,6 +2872,9 @@ document.addEventListener("DOMContentLoaded", () => {
           formData.append("file", selectedGLMFileToSend);
           formData.append("datasets", checkedDatasets.join(","));
           formData.append("dataset", checkedDatasets[0]); // legacy fallback
+          if (selectedShapefileLayer) {
+            formData.append("layer_name", selectedShapefileLayer);
+          }
 
           const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
           const hasTemporal = checkedDatasets.some(d => d !== "srtm");
