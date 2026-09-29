@@ -18,6 +18,48 @@ import math
 import statistics
 import zipfile
 import shapefile
+try:
+    from shapely.geometry import shape as shapely_shape, mapping as shapely_mapping
+    HAS_SHAPELY = True
+except ImportError:
+    HAS_SHAPELY = False
+
+
+def simplify_geojson_geometry(geom: dict, max_coords_str: int = 8000) -> dict:
+    """
+    Client-side geometric simplification using Shapely before sending to Earth Engine.
+    Ensures that high-resolution surveying shapefiles (e.g. GADM Level 1-4) do not
+    exceed Google Earth Engine's 10MB API request payload limit.
+    """
+    if not HAS_SHAPELY or not geom or not geom.get("coordinates"):
+        return geom
+    try:
+        coords_str_len = len(str(geom.get("coordinates", "")))
+        if coords_str_len <= max_coords_str:
+            return geom
+
+        s = shapely_shape(geom)
+        if not s.is_valid:
+            s = s.buffer(0)
+
+        # Adaptive tolerance in WGS84 degrees:
+        # 0.0015 deg is ~165m; 0.003 deg is ~330m; 0.005 deg is ~550m
+        # For remote sensing grids of 5km - 28km, 165m - 500m is virtually imperceptible (< 1-2% of a pixel).
+        if coords_str_len > 250000:
+            tol = 0.005
+        elif coords_str_len > 60000:
+            tol = 0.003
+        else:
+            tol = 0.0015
+
+        simplified = s.simplify(tol, preserve_topology=True)
+        if not simplified.is_empty:
+            return shapely_mapping(simplified)
+        return geom
+    except Exception as e:
+        print(f"Geometry simplification warning: {e}")
+        return geom
+
 
 app = FastAPI(title="PhyloCov Backend Export Service")
 
@@ -1245,7 +1287,7 @@ def build_beast_glm_matrices(
 
 
 def extract_single_dataset_values(
-    fc: ee.FeatureCollection,
+    features_input,
     preset_key: str,
     use_manual_range: bool,
     start_date: Optional[str],
@@ -1256,6 +1298,7 @@ def extract_single_dataset_values(
     """
     Extracts covariate values for a given preset from Earth Engine.
     Operates seamlessly on both point and polygon geometries using zonal reduction.
+    Chunks features into batches of 40 to ensure request payloads stay under 200KB.
     Returns (preset_key, column_name, {row_idx: val}).
     """
     preset = PRESETS[preset_key]
@@ -1282,99 +1325,110 @@ def extract_single_dataset_values(
     reducer_tag = "median" if (spatial_reducer and spatial_reducer.lower() == "median") else "mean"
     col_name = f"{preset_key}_{target_band}_{reducer_tag}"
 
-    if preset_key == "srtm":
-        img = ee.Image(asset_id).select(target_band)
-        if target_multiplier != 1.0:
-            img = img.multiply(target_multiplier)
-        if target_offset != 0.0:
-            img = img.add(target_offset)
-
-        def extract_srtm(feature):
-            val = img.reduceRegion(
-                reducer=ee_reducer,
-                geometry=feature.geometry(),
-                scale=native_res,
-                maxPixels=1e9,
-                bestEffort=True,
-                tileScale=4
-            ).get(target_band)
-            return feature.set("extracted_val", val)
-
-        extracted_fc = fc.map(extract_srtm)
-
-    elif use_manual_range or not has_date_col:
-        img = process_gee_image(
-            dataset=preset_key,
-            start_date=start_date,
-            end_date=end_date,
-            band=target_band,
-            reducer=target_reducer,
-            multiplier=target_multiplier,
-            offset=target_offset,
-            downsample_large_ranges=False
-        )
-
-        def extract_range(feature):
-            val = img.reduceRegion(
-                reducer=ee_reducer,
-                geometry=feature.geometry(),
-                scale=native_res,
-                maxPixels=1e9,
-                bestEffort=True,
-                tileScale=4
-            ).get(target_band)
-            return feature.set("extracted_val", val)
-
-        extracted_fc = fc.map(extract_range)
-
+    CHUNK_SIZE = 40
+    if isinstance(features_input, list):
+        chunks = [features_input[i:i + CHUNK_SIZE] for i in range(0, len(features_input), CHUNK_SIZE)]
     else:
-        def extract_temporal(feature):
-            date_str = feature.get("date")
-            date_val = ee.Date(date_str)
-            if is_monthly:
-                img_col = ee.ImageCollection(asset_id).filterDate(date_val, date_val.advance(1, "month"))
-            else:
-                img_col = ee.ImageCollection(asset_id).filterDate(date_val, date_val.advance(1, "day"))
+        chunks = [features_input]
 
-            img = img_col.select(target_band)
-            if target_reducer == "sum":
-                img = img.sum()
-            elif target_reducer == "min":
-                img = img.min()
-            elif target_reducer == "max":
-                img = img.max()
-            elif target_reducer == "median":
-                img = img.median()
-            else:
-                img = img.mean()
+    val_map = {}
 
+    for chunk in chunks:
+        fc = ee.FeatureCollection(chunk) if isinstance(chunk, list) else chunk
+
+        if preset_key == "srtm":
+            img = ee.Image(asset_id).select(target_band)
             if target_multiplier != 1.0:
                 img = img.multiply(target_multiplier)
             if target_offset != 0.0:
                 img = img.add(target_offset)
 
-            val = img.reduceRegion(
-                reducer=ee_reducer,
-                geometry=feature.geometry(),
-                scale=native_res,
-                maxPixels=1e9,
-                bestEffort=True,
-                tileScale=4
-            ).get(target_band)
-            return feature.set("extracted_val", val)
+            def extract_srtm(feature):
+                val = img.reduceRegion(
+                    reducer=ee_reducer,
+                    geometry=feature.geometry(),
+                    scale=native_res,
+                    maxPixels=1e9,
+                    bestEffort=True,
+                    tileScale=4
+                ).get(target_band)
+                return feature.set("extracted_val", val)
 
-        extracted_fc = fc.map(extract_temporal)
+            extracted_fc = fc.map(extract_srtm)
 
-    # Crucial memory optimization: drop geometries before pulling JSON over HTTP
-    res = extracted_fc.select(["row_idx", "extracted_val"], retainGeometry=False).getInfo()
-    features_out = res.get("features", [])
-    val_map = {}
-    for f in features_out:
-        props = f.get("properties", {})
-        idx = props.get("row_idx")
-        v = props.get("extracted_val")
-        if idx is not None:
-            val_map[idx] = v
+        elif use_manual_range or not has_date_col:
+            img = process_gee_image(
+                dataset=preset_key,
+                start_date=start_date,
+                end_date=end_date,
+                band=target_band,
+                reducer=target_reducer,
+                multiplier=target_multiplier,
+                offset=target_offset,
+                downsample_large_ranges=False
+            )
+
+            def extract_range(feature):
+                val = img.reduceRegion(
+                    reducer=ee_reducer,
+                    geometry=feature.geometry(),
+                    scale=native_res,
+                    maxPixels=1e9,
+                    bestEffort=True,
+                    tileScale=4
+                ).get(target_band)
+                return feature.set("extracted_val", val)
+
+            extracted_fc = fc.map(extract_range)
+
+        else:
+            def extract_temporal(feature):
+                date_str = feature.get("date")
+                date_val = ee.Date(date_str)
+                if is_monthly:
+                    img_col = ee.ImageCollection(asset_id).filterDate(date_val, date_val.advance(1, "month"))
+                else:
+                    img_col = ee.ImageCollection(asset_id).filterDate(date_val, date_val.advance(1, "day"))
+
+                img = img_col.select(target_band)
+                if target_reducer == "sum":
+                    img = img.sum()
+                elif target_reducer == "min":
+                    img = img.min()
+                elif target_reducer == "max":
+                    img = img.max()
+                elif target_reducer == "median":
+                    img = img.median()
+                else:
+                    img = img.mean()
+
+                if target_multiplier != 1.0:
+                    img = img.multiply(target_multiplier)
+                if target_offset != 0.0:
+                    img = img.add(target_offset)
+
+                val = img.reduceRegion(
+                    reducer=ee_reducer,
+                    geometry=feature.geometry(),
+                    scale=native_res,
+                    maxPixels=1e9,
+                    bestEffort=True,
+                    tileScale=4
+                ).get(target_band)
+                return feature.set("extracted_val", val)
+
+            extracted_fc = fc.map(extract_temporal)
+
+        # Crucial memory & payload optimization: drop geometries before pulling JSON over HTTP
+        res = extracted_fc.select(["row_idx", "extracted_val"], retainGeometry=False).getInfo()
+        features_out = res.get("features", [])
+        for f in features_out:
+            props = f.get("properties", {})
+            idx = props.get("row_idx")
+            v = props.get("extracted_val")
+            if idx is not None:
+                val_map[idx] = v
+
     return preset_key, col_name, val_map
 
 
@@ -1601,10 +1655,8 @@ async def extract_glm_covariates(
             props = f.get("properties") or {}
             date_val = str(props.get(date_prop, "")).strip() if date_prop else ""
             try:
-                coords_str_len = len(str(geom.get("coordinates", "")))
-                ee_geom = ee.Geometry(geom)
-                if coords_str_len > 25000:
-                    ee_geom = ee_geom.simplify(maxError=50)
+                clean_geom = simplify_geojson_geometry(geom)
+                ee_geom = ee.Geometry(clean_geom)
                 ee_features.append(ee.Feature(ee_geom, {"row_idx": idx, "date": date_val}))
                 valid_indices.append(idx)
             except Exception as e_geom:
@@ -1614,15 +1666,13 @@ async def extract_glm_covariates(
         if not ee_features:
             raise HTTPException(status_code=400, detail="No features with valid geometric coordinates found in spatial file.")
 
-        fc = ee.FeatureCollection(ee_features)
-
         # Query all requested datasets in parallel
         results_per_dataset = {}
         with ThreadPoolExecutor(max_workers=min(len(target_datasets), 4)) as executor:
             future_to_ds = {
                 executor.submit(
                     extract_single_dataset_values,
-                    fc,
+                    ee_features,
                     ds,
                     use_manual_range,
                     start_date,
@@ -1922,7 +1972,7 @@ of human influenza H3N2. PLoS Pathogens, 10(2), e1003932.
         future_to_ds = {
             executor.submit(
                 extract_single_dataset_values,
-                fc,
+                features,
                 ds,
                 use_manual_range,
                 start_date,
