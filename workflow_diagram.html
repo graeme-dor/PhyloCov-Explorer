@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhyloCov-Explorer | Publication Workflow Diagram</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f141c;
+      --card-bg: #161d27;
+      --border: #273142;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #38bdf8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .header-title h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .header-title p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 0.2rem;
+    }
+    .btn-group {
+      display: flex;
+      gap: 0.75rem;
+    }
+    button {
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+    }
+    .btn-primary {
+      background: #0284c7;
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: #0369a1;
+    }
+    .btn-secondary {
+      background: #1e293b;
+      color: #e2e8f0;
+      border-color: #334155;
+    }
+    .btn-secondary:hover {
+      background: #334155;
+      color: #fff;
+    }
+    .diagram-container {
+      flex: 1;
+      padding: 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-x: auto;
+    }
+    .svg-wrapper {
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+      padding: 20px;
+      max-width: 1400px;
+      width: 100%;
+    }
+    svg text {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .legend-card {
+      margin-top: 1.5rem;
+      max-width: 1400px;
+      width: 100%;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+    }
+    .legend-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+    }
+    .legend-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.82rem;
+      color: #cbd5e1;
+    }
+    .legend-sample {
+      width: 32px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-title">
+      <h1>PhyloCov-Explorer Workflow Schema</h1>
+      <p>Methodological Architecture for Continuous and Discrete Phylodynamics (Nature / Academic Style)</p>
+    </div>
+    <div class="btn-group">
+      <button class="btn-secondary" onclick="exportSVG()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        Download Vector SVG
+      </button>
+      <button class="btn-primary" onclick="exportPNG()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+        Download High-Res PNG (300 DPI)
+      </button>
+    </div>
+  </header>
+
+  <div class="diagram-container">
+    <div class="svg-wrapper">
+      <svg id="workflowSvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1340 1020" width="100%" height="auto">
+        <defs>
+          <style>
+            .t-title { font-weight: 800; font-size: 14px; fill: #0f172a; }
+            .t-tier { font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; fill: #475569; }
+            .t-head { font-weight: 700; font-size: 13px; }
+            .t-sub { font-weight: 400; font-size: 11px; fill: #334155; }
+            .t-code { font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+            .conn { stroke: #64748b; stroke-width: 1.75; fill: none; }
+            .conn-bold { stroke: #0284c7; stroke-width: 2.2; fill: none; }
+          </style>
+
+          <!-- Marker Arrowheads -->
+          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#64748b" />
+          </marker>
+          <marker id="arrow-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#0284c7" />
+          </marker>
+          <marker id="arrow-purple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#7c3aed" />
+          </marker>
+
+          <!-- Drop Shadows -->
+          <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.06"/>
+          </filter>
+        </defs>
+
+        <!-- CANVAS BACKGROUND -->
+        <rect width="1340" height="1020" fill="#ffffff" rx="8" />
+
+        <!-- ========================================== -->
+        <!-- TIER 1: CLIENT INGESTION                   -->
+        <!-- ========================================== -->
+        <g id="tier1">
+          <rect x="20" y="20" width="1300" height="150" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5" />
+          <text x="40" y="44" class="t-tier">TIER 1: USER DATA INGESTION &amp; HYPOTHESIS DEFINITION (BROWSER UI)</text>
+
+          <!-- 1A: Point Samples (Data Parallelogram) -->
+          <g transform="translate(40, 60)" filter="url(#shadow)">
+            <polygon points="15,0 270,0 255,85 0,85" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.8" />
+            <text x="35" y="26" class="t-head" fill="#1e3a8a">Geocoded Isolates / Taxa</text>
+            <text x="35" y="44" class="t-sub">• CSV, TSV, or Excel spreadsheet</text>
+            <text x="35" y="60" class="t-sub">• GPS coordinates (lat, lon) &amp; dates</text>
+            <text x="35" y="75" class="t-sub">• Trait labels matching BEAST taxon IDs</text>
+          </g>
+
+          <!-- 1B: Spatial Boundaries (Data Parallelogram) -->
+          <g transform="translate(330, 60)" filter="url(#shadow)">
+            <polygon points="15,0 270,0 255,85 0,85" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.8" />
+            <text x="35" y="26" class="t-head" fill="#1e3a8a">Spatial Deme Boundaries</text>
+            <text x="35" y="44" class="t-sub">• Zipped ESRI Shapefiles or GeoJSON</text>
+            <text x="35" y="60" class="t-sub">• Multi-layer admin levels (0–4)</text>
+            <text x="35" y="75" class="t-sub">• Discrete geographic polygons</text>
+          </g>
+
+          <!-- 1C: Spatiotemporal Extent (Data Parallelogram) -->
+          <g transform="translate(620, 60)" filter="url(#shadow)">
+            <polygon points="15,0 260,0 245,85 0,85" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.8" />
+            <text x="35" y="26" class="t-head" fill="#1e3a8a">Temporal &amp; Spatial Filter</text>
+            <text x="35" y="44" class="t-sub">• Custom analysis window [t_start, t_end]</text>
+            <text x="35" y="60" class="t-sub">• Daily, monthly or multi-year interval</text>
+            <text x="35" y="75" class="t-sub">• Interactive map bounding extent</text>
+          </g>
+
+          <!-- 1D: Pipeline Selection Decision (Diamond) -->
+          <g transform="translate(970, 52)" filter="url(#shadow)">
+            <polygon points="160,0 320,50 160,100 0,50" fill="#fef3c7" stroke="#d97706" stroke-width="2.2" />
+            <text x="160" y="46" class="t-head" fill="#78350f" text-anchor="middle">Phylodynamic Paradigm</text>
+            <text x="160" y="63" class="t-sub" fill="#92400e" text-anchor="middle">Continuous vs Discrete?</text>
+          </g>
+        </g>
+
+        <!-- CONNECTORS TIER 1 -> DECISION DIAMOND -->
+        <!-- Clean routing bus below the input boxes -->
+        <path d="M 175 145 L 175 156 L 930 156 L 965 110" class="conn" />
+        <path d="M 465 145 L 465 156" class="conn" />
+        <path d="M 750 145 L 750 156" class="conn" />
+        <path d="M 930 156 L 966 110" class="conn" marker-end="url(#arrow)" />
+
+        <!-- Decision Branches -->
+        <path d="M 1050 135 L 1050 185 L 280 185 L 280 250" class="conn-bold" stroke="#0284c7" marker-end="url(#arrow-blue)" />
+        <text x="650" y="176" class="t-head" fill="#0284c7" text-anchor="middle">Continuous Diffusion (Landscape Resistance Surfaces)</text>
+
+        <path d="M 1210 135 L 1210 185 L 725 185 L 725 250" class="conn-bold" stroke="#7c3aed" marker-end="url(#arrow-purple)" />
+        <text x="1000" y="176" class="t-head" fill="#7c3aed" text-anchor="middle">Discrete Demes (GLM Covariate Extraction)</text>
+
+        <!-- ========================================== -->
+        <!-- TIER 2: BACKEND ORCHESTRATION & OPTIMIZE   -->
+        <!-- ========================================== -->
+        <g id="tier2">
+          <rect x="20" y="210" width="1300" height="150" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5" />
+          <text x="40" y="234" class="t-tier">TIER 2: BACKEND ORCHESTRATION &amp; GEOMETRIC OPTIMIZATION (FASTAPI / CLOUD RUN)</text>
+
+          <!-- 2A: Continuous Pipeline Setup (Process Box) -->
+          <g transform="translate(60, 250)" filter="url(#shadow)">
+            <rect width="440" height="85" rx="6" fill="#f1f5f9" stroke="#475569" stroke-width="1.8" />
+            <text x="20" y="28" class="t-head" fill="#0f172a">Continuous Grid &amp; Resolution Configuration</text>
+            <text x="20" y="48" class="t-sub">• Re-projection to WGS84 EPSG:4326 grid</text>
+            <text x="20" y="65" class="t-sub">• Pixel scale alignment (250m, 1km, 5km, or native)</text>
+          </g>
+
+          <!-- 2B: Spatial Parsing & CRS Check (Subroutine) -->
+          <g transform="translate(560, 250)" filter="url(#shadow)">
+            <rect width="330" height="85" rx="4" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.8" />
+            <line x1="14" y1="0" x2="14" y2="85" stroke="#7c3aed" stroke-width="1.5" />
+            <line x1="316" y1="0" x2="316" y2="85" stroke="#7c3aed" stroke-width="1.5" />
+            <text x="26" y="28" class="t-head" fill="#4c1d95">Spatial Ingestion &amp; Sanitization</text>
+            <text x="26" y="48" class="t-sub">• Multi-layer shapefile auto-detection</text>
+            <text x="26" y="65" class="t-sub">• Strict WGS84 CRS normalization</text>
+          </g>
+
+          <!-- 2C: Douglas-Peucker Simplification (Subroutine) -->
+          <g transform="translate(930, 250)" filter="url(#shadow)">
+            <rect width="360" height="85" rx="4" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.8" />
+            <line x1="14" y1="0" x2="14" y2="85" stroke="#7c3aed" stroke-width="1.5" />
+            <line x1="346" y1="0" x2="346" y2="85" stroke="#7c3aed" stroke-width="1.5" />
+            <text x="26" y="28" class="t-head" fill="#4c1d95">Client-Side Topological Simplification</text>
+            <text x="26" y="48" class="t-sub">• Douglas-Peucker reduction (ε = 0.0015°–0.005°)</text>
+            <text x="26" y="65" class="t-sub">• 99% payload reduction (&lt;100 KB vs 15 MB AST)</text>
+            <text x="26" y="78" class="t-code" fill="#6d28d9">Prevents GEE 10 MB HTTP Payload Ceiling</text>
+          </g>
+        </g>
+
+        <!-- CONNECTORS TIER 2 -->
+        <path d="M 890 292 L 930 292" class="conn" marker-end="url(#arrow)" />
+
+        <!-- ========================================== -->
+        <!-- TIER 3: DISTRIBUTED PLANETARY COMPUTING    -->
+        <!-- ========================================== -->
+        <g id="tier3">
+          <rect x="20" y="390" width="1300" height="190" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5" />
+          <text x="40" y="414" class="t-tier">TIER 3: DISTRIBUTED PLANETARY COMPUTATION (GOOGLE EARTH ENGINE CLUSTER)</text>
+
+          <!-- 3A: Earth Observation Catalog (Database Cylinder) -->
+          <g transform="translate(60, 430)" filter="url(#shadow)">
+            <path d="M 0,20 A 180,18 0 0,0 360,20 V 105 A 180,18 0 0,1 0,105 Z" fill="#ecfdf5" stroke="#059669" stroke-width="1.8" />
+            <ellipse cx="180" cy="20" rx="180" ry="18" fill="#d1fae5" stroke="#059669" stroke-width="1.8" />
+            <text x="180" y="24" class="t-head" fill="#064e3b" text-anchor="middle">Earth Observation Data Catalog</text>
+            <text x="30" y="52" class="t-sub">• CHIRPS Daily Precipitation (~5.5 km)</text>
+            <text x="30" y="68" class="t-sub">• ERA5 / ERA5-Land Reanalysis Temperature (11–28 km)</text>
+            <text x="30" y="84" class="t-sub">• MODIS NDVI, EVI &amp; LST Day/Night (250m–5.5km)</text>
+            <text x="30" y="100" class="t-sub">• NASA SRTM Topographical Elevation (30m)</text>
+          </g>
+
+          <!-- 3B: GEE Distributed Map-Reduce (Process Box) -->
+          <g transform="translate(480, 435)" filter="url(#shadow)">
+            <rect width="400" height="115" rx="6" fill="#f1f5f9" stroke="#475569" stroke-width="1.8" />
+            <text x="25" y="28" class="t-head" fill="#0f172a">Spatiotemporal Reductions &amp; Compositing</text>
+            <text x="25" y="48" class="t-sub">• Temporal aggregation: ee.Reducer.mean(), sum(), median()</text>
+            <text x="25" y="65" class="t-sub">• Spatial clipping to study region bounding extent</text>
+            <text x="25" y="82" class="t-sub">• Batch zonal polygon extraction (40-feature chunking)</text>
+            <text x="25" y="100" class="t-code" fill="#0369a1">Output: retainGeometry=False (Numerical arrays)</text>
+          </g>
+
+          <!-- 3C: Real-Time Visualization Service (Process Box) -->
+          <g transform="translate(930, 435)" filter="url(#shadow)">
+            <rect width="360" height="115" rx="6" fill="#f1f5f9" stroke="#475569" stroke-width="1.8" />
+            <text x="25" y="28" class="t-head" fill="#0f172a">Interactive XYZ Tile Server</text>
+            <text x="25" y="48" class="t-sub">• Cloud tile rendering (ee.data.getMapId)</text>
+            <text x="25" y="65" class="t-sub">• Real-time browser preview via Leaflet/MapLibre</text>
+            <text x="25" y="82" class="t-sub">• Dynamic color ramping &amp; legend stretch</text>
+            <text x="25" y="100" class="t-code" fill="#475569">Inspection before downloading</text>
+          </g>
+        </g>
+
+        <!-- CONNECTORS TIER 2 -> TIER 3 -->
+        <path d="M 280 335 L 280 380 L 580 380 L 580 435" class="conn" marker-end="url(#arrow)" />
+        <path d="M 1110 335 L 1110 380 L 780 380 L 780 435" class="conn" marker-end="url(#arrow)" />
+        <path d="M 420 492 L 480 492" class="conn" marker-end="url(#arrow)" />
+        <path d="M 880 492 L 930 492" class="conn" marker-end="url(#arrow)" />
+
+        <!-- ========================================== -->
+        <!-- TIER 4: INTERMEDIATE DATA PRODUCTS        -->
+        <!-- ========================================== -->
+        <g id="tier4">
+          <rect x="20" y="610" width="1300" height="130" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5" />
+          <text x="40" y="634" class="t-tier">TIER 4: INTERMEDIATE DATA PRODUCTS &amp; COVARIATE EXTRACTION</text>
+
+          <!-- 4A: GeoTIFF Surface Export (Data Parallelogram) -->
+          <g transform="translate(60, 645)" filter="url(#shadow)">
+            <polygon points="15,0 440,0 425,75 0,75" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.8" />
+            <text x="35" y="26" class="t-head" fill="#14532d">Continuous GeoTIFF Environmental Rasters</text>
+            <text x="35" y="46" class="t-sub">• Multi-band georeferenced raster surfaces</text>
+            <text x="35" y="62" class="t-sub">• Direct cloud download or Google Drive export task</text>
+          </g>
+
+          <!-- 4B: Zonal Summary Data Array (Data Parallelogram) -->
+          <g transform="translate(560, 645)" filter="url(#shadow)">
+            <polygon points="15,0 720,0 705,75 0,75" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.8" />
+            <text x="35" y="26" class="t-head" fill="#14532d">Zonal Summary Covariate Table (Clean Arrays)</text>
+            <text x="35" y="46" class="t-sub">• Feature IDs, polygon centroid coordinates, and aggregated mean/median environmental metrics</text>
+            <text x="35" y="62" class="t-sub">• Stripped of heavy spatial coordinates to streamline downstream statistical matrix building</text>
+          </g>
+        </g>
+
+        <!-- CONNECTORS TIER 3 -> TIER 4 -->
+        <path d="M 580 550 L 580 580 L 280 580 L 280 645" class="conn" marker-end="url(#arrow)" />
+        <path d="M 780 550 L 780 580 L 920 580 L 920 645" class="conn" marker-end="url(#arrow)" />
+
+        <!-- ========================================== -->
+        <!-- TIER 5: DOWNSTREAM STATISTICAL INFERENCE   -->
+        <!-- ========================================== -->
+        <g id="tier5">
+          <rect x="20" y="760" width="1300" height="240" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5" />
+          <text x="40" y="784" class="t-tier">TIER 5: DOWNSTREAM STATISTICAL MODELING &amp; PHYLODYNAMIC INFERENCE</text>
+
+          <!-- 5A: Seraphim Landscape Path (Subroutine) -->
+          <g transform="translate(60, 800)" filter="url(#shadow)">
+            <rect width="380" height="85" rx="4" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.8" />
+            <line x1="14" y1="0" x2="14" y2="85" stroke="#7c3aed" stroke-width="1.5" />
+            <line x1="366" y1="0" x2="366" y2="85" stroke="#7c3aed" stroke-width="1.5" />
+            <text x="26" y="26" class="t-head" fill="#4c1d95">Landscape Path Extraction (seraphim)</text>
+            <text x="26" y="45" class="t-sub">• Tracing branches from Continuous RRW posterior trees</text>
+            <text x="26" y="62" class="t-sub">• Least-cost paths &amp; circuit theory (gdistance)</text>
+            <text x="26" y="76" class="t-sub">• Environmental conductance vs resistance testing</text>
+          </g>
+
+          <!-- 5B: Continuous Deliverable (Terminal Stadium) -->
+          <g transform="translate(60, 910)" filter="url(#shadow)">
+            <rect width="380" height="60" rx="30" fill="#fdf2f8" stroke="#db2777" stroke-width="2.2" />
+            <text x="190" y="26" class="t-head" fill="#831843" text-anchor="middle">Continuous Landscape Evidence</text>
+            <text x="190" y="46" class="t-sub" fill="#9d174d" text-anchor="middle">Correlation (r) &amp; Statistical Bayes Factor Support</text>
+          </g>
+
+          <!-- 5C: Distance Formulations (Subroutine) -->
+          <g transform="translate(480, 800)" filter="url(#shadow)">
+            <rect width="250" height="85" rx="4" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.8" />
+            <line x1="12" y1="0" x2="12" y2="85" stroke="#7c3aed" stroke-width="1.5" />
+            <line x1="238" y1="0" x2="238" y2="85" stroke="#7c3aed" stroke-width="1.5" />
+            <text x="22" y="26" class="t-head" fill="#4c1d95">Geographic Distance</text>
+            <text x="22" y="45" class="t-sub">• Great-circle distance (Haversine)</text>
+            <text x="22" y="62" class="t-sub">• Log-distance (log d_ij)</text>
+            <text x="22" y="76" class="t-sub">• Baseline spatial gravity prior</text>
+          </g>
+
+          <!-- 5D: Directional GLM Hypotheses (Subroutine) -->
+          <g transform="translate(750, 800)" filter="url(#shadow)">
+            <rect width="270" height="85" rx="4" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.8" />
+            <line x1="12" y1="0" x2="12" y2="85" stroke="#7c3aed" stroke-width="1.5" />
+            <line x1="258" y1="0" x2="258" y2="85" stroke="#7c3aed" stroke-width="1.5" />
+            <text x="22" y="26" class="t-head" fill="#4c1d95">Directional GLM Hypotheses</text>
+            <text x="22" y="45" class="t-sub">• Origin driver (X_ij = C_i)</text>
+            <text x="22" y="60" class="t-sub">• Destination driver (X_ij = C_j)</text>
+            <text x="22" y="75" class="t-sub">• Absolute diff (|C_i - C_j|) &amp; Average</text>
+          </g>
+
+          <!-- 5E: Off-Diagonal Standardization (Subroutine) -->
+          <g transform="translate(1040, 800)" filter="url(#shadow)">
+            <rect width="250" height="85" rx="4" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.8" />
+            <line x1="12" y1="0" x2="12" y2="85" stroke="#7c3aed" stroke-width="1.5" />
+            <line x1="238" y1="0" x2="238" y2="85" stroke="#7c3aed" stroke-width="1.5" />
+            <text x="22" y="26" class="t-head" fill="#4c1d95">Off-Diagonal Z-Score</text>
+            <text x="22" y="45" class="t-sub">• Self-transitions: X_ii = 0.0</text>
+            <text x="22" y="60" class="t-sub">• μ_off = 0.0, σ_off = 1.0</text>
+            <text x="22" y="75" class="t-sub">• Ready for BEAUti import (*_std.csv)</text>
+          </g>
+
+          <!-- 5F: BEAST CTMC-GLM Model (Terminal Stadium) -->
+          <g transform="translate(560, 910)" filter="url(#shadow)">
+            <rect width="720" height="60" rx="30" fill="#fdf2f8" stroke="#db2777" stroke-width="2.2" />
+            <text x="360" y="26" class="t-head" fill="#831843" text-anchor="middle">BEAST CTMC-GLM Discrete Diffusion Model</text>
+            <text x="360" y="46" class="t-sub" fill="#9d174d" text-anchor="middle">Spike-and-Slab Binary Priors (δ_k) • Regression Coefficients (β_k) • Marginal Bayes Factor Model Selection</text>
+          </g>
+        </g>
+
+        <!-- CONNECTORS TIER 4 -> TIER 5 -->
+        <path d="M 250 720 L 250 800" class="conn" marker-end="url(#arrow)" />
+        <path d="M 250 885 L 250 910" class="conn-bold" stroke="#db2777" marker-end="url(#arrow)" />
+
+        <path d="M 920 720 L 920 760 L 605 760 L 605 800" class="conn" marker-end="url(#arrow)" />
+        <path d="M 920 720 L 920 760 L 885 760 L 885 800" class="conn" marker-end="url(#arrow)" />
+        <path d="M 730 842 L 750 842" class="conn" marker-end="url(#arrow)" />
+        <path d="M 1020 842 L 1040 842" class="conn" marker-end="url(#arrow)" />
+        <path d="M 1165 885 L 1165 910" class="conn-bold" stroke="#db2777" marker-end="url(#arrow)" />
+      </svg>
+    </div>
+
+    <!-- FIGURE LEGEND & METHODOLOGICAL SYMBOLOGY -->
+    <div class="legend-card">
+      <div class="legend-title">Scientific Flowchart Symbology &amp; Conventions (Standard ISO / ANSI Flowcharting)</div>
+      <div class="legend-grid">
+        <div class="legend-item">
+          <div class="legend-sample">
+            <svg width="28" height="20" viewBox="0 0 28 20">
+              <polygon points="5,1 27,1 23,19 1,19" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5" />
+            </svg>
+          </div>
+          <div><strong>Data In / Out (Parallelogram):</strong> User input files (CSV, Shapefiles) and intermediate analytical outputs (GeoTIFF, Arrays).</div>
+        </div>
+
+        <div class="legend-item">
+          <div class="legend-sample">
+            <svg width="28" height="20" viewBox="0 0 28 20">
+              <path d="M 1,4 A 13,3 0 0,0 27,4 V 16 A 13,3 0 0,1 1,16 Z" fill="#ecfdf5" stroke="#059669" stroke-width="1.5" />
+              <ellipse cx="14" cy="4" rx="13" ry="3" fill="#d1fae5" stroke="#059669" stroke-width="1.5" />
+            </svg>
+          </div>
+          <div><strong>Database / Catalog (Cylinder):</strong> Google Earth Engine planetary repository of satellite and bioclimatic rasters.</div>
+        </div>
+
+        <div class="legend-item">
+          <div class="legend-sample">
+            <svg width="28" height="20" viewBox="0 0 28 20">
+              <rect x="1" y="2" width="26" height="16" rx="3" fill="#f1f5f9" stroke="#475569" stroke-width="1.5" />
+            </svg>
+          </div>
+          <div><strong>Process (Rectangle):</strong> Deterministic data transformations, clipping, tiling, and batch chunking.</div>
+        </div>
+
+        <div class="legend-item">
+          <div class="legend-sample">
+            <svg width="28" height="20" viewBox="0 0 28 20">
+              <rect x="1" y="2" width="26" height="16" rx="2" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.5" />
+              <line x1="5" y1="2" x2="5" y2="18" stroke="#7c3aed" stroke-width="1.2" />
+              <line x1="23" y1="2" x2="23" y2="18" stroke="#7c3aed" stroke-width="1.2" />
+            </svg>
+          </div>
+          <div><strong>Subroutine (Double Border):</strong> Complex algorithmic routines (Douglas-Peucker simplification, Haversine, Z-score, MCMC).</div>
+        </div>
+
+        <div class="legend-item">
+          <div class="legend-sample">
+            <svg width="28" height="20" viewBox="0 0 28 20">
+              <polygon points="14,1 27,10 14,19 1,10" fill="#fef3c7" stroke="#d97706" stroke-width="1.5" />
+            </svg>
+          </div>
+          <div><strong>Decision (Diamond):</strong> Analytical paradigm selection branching between continuous and discrete phylodynamics.</div>
+        </div>
+
+        <div class="legend-item">
+          <div class="legend-sample">
+            <svg width="28" height="20" viewBox="0 0 28 20">
+              <rect x="1" y="3" width="26" height="14" rx="7" fill="#fdf2f8" stroke="#db2777" stroke-width="1.8" />
+            </svg>
+          </div>
+          <div><strong>Terminal / Deliverable (Stadium):</strong> Primary biological inferences (Bayes factors, coefficient effect sizes, landscape evidence).</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function exportSVG() {
+      const svgEl = document.getElementById('workflowSvg');
+      const serializer = new XMLSerializer();
+      let source = serializer.serializeToString(svgEl);
+      if(!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)){
+        source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+      }
+      const blob = new Blob([source], {type: "image/svg+xml;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = "phylocov_methodology_workflow_schema.svg";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function exportPNG() {
+      const svgEl = document.getElementById('workflowSvg');
+      const serializer = new XMLSerializer();
+      let source = serializer.serializeToString(svgEl);
+      if(!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)){
+        source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+      }
+      const svgBlob = new Blob([source], {type: "image/svg+xml;charset=utf-8"});
+      const URLObj = window.URL || window.webkitURL || window;
+      const blobURL = URLObj.createObjectURL(svgBlob);
+      
+      const img = new Image();
+      img.onload = function() {
+        const scale = 3; // 3x scale for crisp 300 DPI publication quality
+        const canvas = document.createElement('canvas');
+        canvas.width = 1340 * scale;
+        canvas.height = 1020 * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0);
+        
+        canvas.toBlob(function(blob) {
+          const a = document.createElement('a');
+          a.download = "phylocov_methodology_workflow_schema_300dpi.png";
+          a.href = URLObj.createObjectURL(blob);
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }, "image/png");
+      };
+      img.src = blobURL;
+    }
+  </script>
+</body>
+</html>

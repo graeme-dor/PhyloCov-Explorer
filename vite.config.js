@@ -12,7 +12,8 @@ export default {
       input: {
         main: resolve(__dirname, 'index.html'),
         datasets: resolve(__dirname, 'datasets.html'),
-        about: resolve(__dirname, 'about.html')
+        about: resolve(__dirname, 'about.html'),
+        workflow_diagram: resolve(__dirname, 'workflow_diagram.html')
       }
     }
   }
