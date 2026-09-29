@@ -711,6 +711,18 @@
                 <div id="glm_notice_banner" style="display: none; font-size: 0.85rem; color: var(--accent-secondary); margin-bottom: 0.5rem; border: 1px dashed rgba(88, 166, 255, 0.3); padding: 8px 12px; border-radius: 6px; text-align: left; background: rgba(88, 166, 255, 0.03); line-height: 1.4;">
                 </div>
 
+                <!-- Polygon Zonal Reduction Option (Shown for Spatial Boundaries) -->
+                <div class="form-group" id="glm_zonal_stat_group" style="display: none; border-top: 1px solid #30363d; padding-top: 0.85rem; margin-top: 0.5rem;">
+                  <label for="glm_zonal_stat_select" style="font-size: 0.82rem; font-weight: 600; display: block; margin-bottom: 0.25rem;">Polygon Zonal Statistic</label>
+                  <select id="glm_zonal_stat_select" style="width: 100%; padding: 0.45rem 0.6rem; font-size: 0.85rem; border-radius: 4px; background: var(--bg-color); color: var(--text-color); border: 1px solid #30363d;">
+                    <option value="mean" selected>Mean (Average raster value across each polygon)</option>
+                    <option value="median">Median (Median raster value across each polygon)</option>
+                  </select>
+                  <div style="font-size: 0.75rem; color: #8b949e; margin-top: 0.25rem;">
+                    Calculates the zonal mean or median across all grid cells inside each polygon boundary and outputs an enriched CSV.
+                  </div>
+                </div>
+
                 <!-- BEAST GLM Matrix Configuration (Step 4) -->
                 <div class="form-group" id="glm_matrix_options_group" style="display: none; border-top: 1px solid #30363d; padding-top: 0.85rem; margin-top: 0.5rem;">
                   <label style="font-weight: 600; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between;">

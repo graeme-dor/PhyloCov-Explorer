@@ -2028,6 +2028,8 @@ document.addEventListener("DOMContentLoaded", () => {
           if (glmExpectedPointsBox) glmExpectedPointsBox.style.display = "none";
           if (glmExpectedPolyBox) glmExpectedPolyBox.style.display = "block";
         }
+        const zonalGroup = document.getElementById("glm_zonal_stat_group");
+        if (zonalGroup) zonalGroup.style.display = mode === "boundary" ? "block" : "none";
         updateGLMSubmitBtnState();
       }
 
@@ -2406,15 +2408,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (autoCol) {
               locationSelect.value = autoCol;
-              if (matrixCheckbox) matrixCheckbox.checked = true;
-              if (matrixSettings) matrixSettings.style.display = "flex";
               updateHint(autoCol);
             } else if (candidateCols.length > 0) {
               locationSelect.value = candidateCols[0];
-              if (matrixCheckbox) matrixCheckbox.checked = true;
-              if (matrixSettings) matrixSettings.style.display = "flex";
               updateHint(candidateCols[0]);
             }
+            if (matrixCheckbox) matrixCheckbox.checked = false;
+            if (matrixSettings) matrixSettings.style.display = "none";
 
             if (matrixCheckbox) {
               matrixCheckbox.onchange = (ev) => {
@@ -2890,15 +2890,19 @@ document.addEventListener("DOMContentLoaded", () => {
           const generateMatricesCheckbox = document.getElementById("glm_generate_matrices_checkbox");
           const locationColSelect = document.getElementById("glm_location_col_select");
           const aggSelect = document.getElementById("glm_aggregation_select");
+          const zonalStatSelect = document.getElementById("glm_zonal_stat_select");
 
           const shouldGenerateMatrices = generateMatricesCheckbox && generateMatricesCheckbox.checked && locationColSelect && locationColSelect.value;
           if (shouldGenerateMatrices) {
             formData.append("generate_matrices", "true");
             formData.append("location_col", locationColSelect.value);
-            if (aggSelect) {
-              formData.append("matrix_aggregation", aggSelect.value);
-            }
           }
+
+          // Aggregation / Zonal reducer
+          const chosenAggregation = glmInputMode === "boundary"
+            ? (zonalStatSelect ? zonalStatSelect.value : "mean")
+            : (aggSelect ? aggSelect.value : "mean");
+          formData.append("matrix_aggregation", chosenAggregation);
 
           try {
             const response = await fetch(`${BACKEND_URL}/extract`, {
@@ -2929,8 +2933,8 @@ document.addEventListener("DOMContentLoaded", () => {
               glmDownloadLink.download = `enriched_${origStem}_${dsTag}.geojson`;
               glmDownloadLink.textContent = "Download Enriched Boundaries (GeoJSON) ⬇";
             } else {
-              glmDownloadLink.download = `${origStem}_enriched_${dsTag}.csv`;
-              glmDownloadLink.textContent = "Download Enriched CSV ⬇";
+              glmDownloadLink.download = `enriched_${origStem}_${dsTag}.csv`;
+              glmDownloadLink.textContent = glmInputMode === "boundary" ? "Download Enriched Polygon CSV ⬇" : "Download Enriched CSV ⬇";
             }
 
             // Update UI success state
@@ -2939,7 +2943,7 @@ document.addEventListener("DOMContentLoaded", () => {
             glmStatusMessage.textContent = isZip 
               ? `BEAST GLM predictor package (.zip) successfully generated with pairwise matrices across ${checkedDatasets.length} covariate layer${checkedDatasets.length > 1 ? 's' : ''}!` 
               : (glmInputMode === "boundary"
-                ? `Boundary zonal covariate extraction successfully completed across ${checkedDatasets.length} layer${checkedDatasets.length > 1 ? 's' : ''}!`
+                ? `Boundary zonal covariate extraction (${chosenAggregation}) successfully completed across ${checkedDatasets.length} layer${checkedDatasets.length > 1 ? 's' : ''}!`
                 : `Point covariate extraction successfully completed across ${checkedDatasets.length} layer${checkedDatasets.length > 1 ? 's' : ''}!`);
             glmDownloadContainer.style.display = "block";
 
@@ -2947,7 +2951,11 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error("GLM Extraction Error:", error);
             glmStatusDot.style.backgroundColor = "#f85149";
             glmStatusText.textContent = "ERROR";
-            glmStatusMessage.textContent = error.message;
+            let msg = error.message || "Failed to extract covariates.";
+            if (msg.includes("Load failed") || msg.includes("Failed to fetch")) {
+              msg = "Server connection lost or request timed out. This may happen with very large shapefile archives. Please try extracting fewer layers or a narrower date range.";
+            }
+            glmStatusMessage.textContent = msg;
           } finally {
             glmSubmitBtn.disabled = false;
             updateGLMSubmitBtnState();

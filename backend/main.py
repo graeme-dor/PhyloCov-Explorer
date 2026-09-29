@@ -1250,7 +1250,8 @@ def extract_single_dataset_values(
     use_manual_range: bool,
     start_date: Optional[str],
     end_date: Optional[str],
-    has_date_col: bool
+    has_date_col: bool,
+    spatial_reducer: str = "mean"
 ) -> tuple[str, str, dict]:
     """
     Extracts covariate values for a given preset from Earth Engine.
@@ -1277,7 +1278,9 @@ def extract_single_dataset_values(
     elif preset_key == "srtm":
         native_res = 30
 
-    col_name = f"{preset_key}_{target_band}"
+    ee_reducer = ee.Reducer.median() if (spatial_reducer and spatial_reducer.lower() == "median") else ee.Reducer.mean()
+    reducer_tag = "median" if (spatial_reducer and spatial_reducer.lower() == "median") else "mean"
+    col_name = f"{preset_key}_{target_band}_{reducer_tag}"
 
     if preset_key == "srtm":
         img = ee.Image(asset_id).select(target_band)
@@ -1288,7 +1291,7 @@ def extract_single_dataset_values(
 
         def extract_srtm(feature):
             val = img.reduceRegion(
-                reducer=ee.Reducer.mean(),
+                reducer=ee_reducer,
                 geometry=feature.geometry(),
                 scale=native_res,
                 maxPixels=1e9,
@@ -1313,7 +1316,7 @@ def extract_single_dataset_values(
 
         def extract_range(feature):
             val = img.reduceRegion(
-                reducer=ee.Reducer.mean(),
+                reducer=ee_reducer,
                 geometry=feature.geometry(),
                 scale=native_res,
                 maxPixels=1e9,
@@ -1351,7 +1354,7 @@ def extract_single_dataset_values(
                 img = img.add(target_offset)
 
             val = img.reduceRegion(
-                reducer=ee.Reducer.mean(),
+                reducer=ee_reducer,
                 geometry=feature.geometry(),
                 scale=native_res,
                 maxPixels=1e9,
@@ -1362,7 +1365,8 @@ def extract_single_dataset_values(
 
         extracted_fc = fc.map(extract_temporal)
 
-    res = extracted_fc.getInfo()
+    # Crucial memory optimization: drop geometries before pulling JSON over HTTP
+    res = extracted_fc.select(["row_idx", "extracted_val"], retainGeometry=False).getInfo()
     features_out = res.get("features", [])
     val_map = {}
     for f in features_out:
@@ -1597,7 +1601,10 @@ async def extract_glm_covariates(
             props = f.get("properties") or {}
             date_val = str(props.get(date_prop, "")).strip() if date_prop else ""
             try:
+                coords_str_len = len(str(geom.get("coordinates", "")))
                 ee_geom = ee.Geometry(geom)
+                if coords_str_len > 25000:
+                    ee_geom = ee_geom.simplify(maxError=50)
                 ee_features.append(ee.Feature(ee_geom, {"row_idx": idx, "date": date_val}))
                 valid_indices.append(idx)
             except Exception as e_geom:
@@ -1620,7 +1627,8 @@ async def extract_glm_covariates(
                     use_manual_range,
                     start_date,
                     end_date,
-                    bool(date_prop)
+                    bool(date_prop),
+                    matrix_aggregation
                 ): ds
                 for ds in target_datasets
             }
@@ -1844,24 +1852,11 @@ of human influenza H3N2. PLoS Pathogens, 10(2), e1003932.
                 headers={"Content-Disposition": f'attachment; filename="beast_glm_{ds_tag}_{orig_stem}.zip"'}
             )
 
-        # Non-matrix output: return GeoJSON or zipped package if shapefile was uploaded
-        if orig_filename.lower().endswith(".zip"):
-            zip_buf = io.BytesIO()
-            with zipfile.ZipFile(zip_buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-                zf.writestr("enriched_boundaries.geojson", json.dumps(enriched_geojson, indent=2))
-                zf.writestr("enriched_boundaries.csv", csv_out.getvalue())
-            zip_buf.seek(0)
-            return StreamingResponse(
-                zip_buf,
-                media_type="application/zip",
-                headers={"Content-Disposition": f'attachment; filename="enriched_{orig_stem}.zip"'}
-            )
-
-        geo_json_str = json.dumps(enriched_geojson, indent=2)
+        # Non-matrix output: return enriched CSV directly
         return StreamingResponse(
-            io.BytesIO(geo_json_str.encode("utf-8")),
-            media_type="application/geo+json",
-            headers={"Content-Disposition": f'attachment; filename="enriched_{orig_stem}.geojson"'}
+            io.BytesIO(csv_out.getvalue().encode("utf-8")),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="enriched_{orig_stem}.csv"'}
         )
 
     # =========================================================================
