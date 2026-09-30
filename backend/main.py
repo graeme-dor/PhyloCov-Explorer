@@ -228,7 +228,7 @@ def process_gee_image(
                     img_col = img_col.filter(ee.Filter.calendarRange(1, 1, 'day_of_month'))
             except Exception as e_ds:
                 print(f"Downsampling failed: {e_ds}")
-        if img_col.size().getInfo() == 0:
+        if img_col.limit(1).size().getInfo() == 0:
             msg = "No data available in this date range."
             if "era5" in preset_key:
                 msg += " Note: ERA5 reanalysis datasets typically have a 2-3 month processing lag."
@@ -290,7 +290,7 @@ def process_gee_image(
                 except Exception as e_ds:
                     print(f"Downsampling failed: {e_ds}")
 
-            if img_col.size().getInfo() == 0:
+            if img_col.limit(1).size().getInfo() == 0:
                 raise HTTPException(
                     status_code=400,
                     detail=f"No data available for custom GEE asset '{asset_id}' in the selected date range."
@@ -306,6 +306,8 @@ def process_gee_image(
                 img = img_col.max()
             elif reducer == "median":
                 img = img_col.median()
+            elif reducer == "mode":
+                img = img_col.reduce(ee.Reducer.mode())
             else:
                 img = img_col.mean()
                 
@@ -399,47 +401,28 @@ def get_dataset_info(id: str):
     else:
         asset_id = id
 
+    # 1. Fast Path: Check Earth Engine STAC Catalog First (<200ms, no server-side sorting)
+    stac_data = fetch_stac_metadata(asset_id)
+    
     asset_type = None
     direct_bands = []
     start_date = None
     end_date = None
-    
-    try:
-        img = ee.Image(asset_id)
-        direct_bands = img.bandNames().getInfo()
-        asset_type = "Image"
-    except Exception as e_img:
-        try:
-            col = ee.ImageCollection(asset_id)
-            first_img = col.first()
-            if first_img is None:
-                raise HTTPException(status_code=404, detail=f"Asset '{asset_id}' is an empty ImageCollection.")
-            direct_bands = first_img.bandNames().getInfo()
-            asset_type = "ImageCollection"
-            
-            # Retrieve date range dynamically
-            try:
-                first_img_sorted = col.sort("system:time_start").first()
-                last_img_sorted = col.sort("system:time_start", False).first()
-                start_ms = first_img_sorted.get("system:time_start").getInfo()
-                end_ms = last_img_sorted.get("system:time_start").getInfo()
-                if start_ms and end_ms:
-                    start_date = datetime.fromtimestamp(start_ms / 1000.0).strftime("%Y-%m-%d")
-                    end_date = datetime.fromtimestamp(end_ms / 1000.0).strftime("%Y-%m-%d")
-            except Exception as e_dates:
-                print(f"Failed to fetch date range for custom asset: {e_dates}")
-        except Exception as e_col:
-            err_msg = str(e_img) if "not found" in str(e_img) else str(e_col)
-            raise HTTPException(
-                status_code=400,
-                detail=f"Failed to load GEE asset '{asset_id}'. Error: {err_msg}"
-            )
-
-    stac_data = fetch_stac_metadata(asset_id)
     stac_bands = {}
     gee_vis = []
-    
+    native_res = 5000
+
     if stac_data:
+        gee_type = stac_data.get("gee:type", "").lower()
+        asset_type = "ImageCollection" if "collection" in gee_type else "Image"
+        
+        # Temporal range from STAC interval
+        temp_interval = stac_data.get("extent", {}).get("temporal", {}).get("interval", [[]])[0]
+        if len(temp_interval) > 0 and temp_interval[0]:
+            start_date = temp_interval[0][:10]
+        if len(temp_interval) > 1 and temp_interval[1]:
+            end_date = temp_interval[1][:10]
+            
         summaries = stac_data.get("summaries", {})
         for b in summaries.get("eo:bands", []):
             name = b.get("name")
@@ -451,18 +434,65 @@ def get_dataset_info(id: str):
                     "units": b.get("gee:units", ""),
                     "vis": None
                 }
+        direct_bands = list(stac_bands.keys())
         gee_vis = summaries.get("gee:visualizations", [])
+        
+        # Estimate resolution from asset name / STAC
+        asset_lower = asset_id.lower()
+        if any(k in asset_lower for k in ("10m", "dynamicworld", "s2", "worldcover")):
+            native_res = 10
+        elif any(k in asset_lower for k in ("30m", "landsat", "srtm")):
+            native_res = 30
+        elif any(k in asset_lower for k in ("250m", "mod13q1")):
+            native_res = 250
+        elif "500m" in asset_lower:
+            native_res = 500
+        elif any(k in asset_lower for k in ("1000m", "1km")):
+            native_res = 1000
 
+    # 2. Fallback to Earth Engine API only if STAC metadata wasn't available
+    if not direct_bands:
+        try:
+            img = ee.Image(asset_id)
+            direct_bands = img.bandNames().getInfo()
+            asset_type = "Image"
+        except Exception as e_img:
+            try:
+                col = ee.ImageCollection(asset_id)
+                first_img = col.first()
+                if first_img is None:
+                    raise HTTPException(status_code=404, detail=f"Asset '{asset_id}' is an empty ImageCollection.")
+                direct_bands = first_img.bandNames().getInfo()
+                asset_type = "ImageCollection"
+                
+                # Fetch starting date cheaply without unbounded reverse sort
+                try:
+                    start_ms = first_img.get("system:time_start").getInfo()
+                    if start_ms:
+                        start_date = datetime.fromtimestamp(start_ms / 1000.0).strftime("%Y-%m-%d")
+                        end_date = datetime.now().strftime("%Y-%m-%d")
+                except Exception as e_dates:
+                    print(f"Failed to fetch date range for custom asset: {e_dates}")
+            except Exception as e_col:
+                err_msg = str(e_img) if "not found" in str(e_img) else str(e_col)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to load GEE asset '{asset_id}'. Error: {err_msg}"
+                )
+
+    # 3. Parse visualization recommendations
     for vis in gee_vis:
         band_vis = vis.get("image_visualization", {}).get("band_vis", {})
         vis_bands = band_vis.get("bands", [])
         if vis_bands:
             primary_band = vis_bands[0]
             if primary_band in stac_bands and not stac_bands[primary_band]["vis"]:
+                raw_palette = band_vis.get("palette", [])
+                formatted_palette = ["#" + p.lstrip("#") for p in raw_palette]
                 stac_bands[primary_band]["vis"] = {
                     "min": band_vis.get("min", [0.0])[0],
                     "max": band_vis.get("max", [100.0])[0],
-                    "palette": band_vis.get("palette", [])
+                    "palette": formatted_palette
                 }
 
     rich_bands = []
@@ -490,7 +520,7 @@ def get_dataset_info(id: str):
             elif b_id == "precipitation":
                 desc = "Precipitation"
                 units = "mm/day"
-            elif b_id == "temperature_2m" or b_id == "mean_2m_air_temperature":
+            elif b_id in ("temperature_2m", "mean_2m_air_temperature"):
                 desc = "Temperature"
                 units = "C"
                 offset = -273.15
@@ -507,22 +537,23 @@ def get_dataset_info(id: str):
                 "vis": None
             })
 
-    # Retrieve nominal scale resolution dynamically from GEE projection info
-    native_res = 5000
-    try:
-        if direct_bands:
-            first_band = [b for b in direct_bands if b != "range"][0] # exclude virtual range band
+    # Retrieve nominal scale resolution dynamically from GEE projection info if not set
+    if native_res == 5000 and direct_bands and not stac_data:
+        try:
+            first_band = [b for b in direct_bands if b != "range"][0]
             if asset_type == "Image":
-                native_res = int(round(img.select(first_band).projection().nominalScale().getInfo()))
+                native_res = int(round(ee.Image(asset_id).select(first_band).projection().nominalScale().getInfo()))
             else:
-                first_img = col.first()
+                first_img = ee.ImageCollection(asset_id).first()
                 if first_img:
                     native_res = int(round(first_img.select(first_band).projection().nominalScale().getInfo()))
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     # Snap commonly found nominal scales to standard GEE catalog resolutions
-    if 25 <= native_res <= 35:
+    if 8 <= native_res <= 15:
+        native_res = 10
+    elif 25 <= native_res <= 35:
         native_res = 30
     elif 80 <= native_res <= 100:
         native_res = 90
@@ -540,7 +571,6 @@ def get_dataset_info(id: str):
         native_res = 11132
     elif 27000 <= native_res <= 28500:
         native_res = 27830
-
 
     return {
         "type": asset_type,
@@ -808,11 +838,15 @@ def get_map_tiles(
                 "palette": preset["palette"]
             }
         else:
-            v_min = 0.0
-            v_max = 1.0
+            v_min = vis_min if vis_min is not None else 0.0
+            v_max = vis_max if vis_max is not None else 1.0
             
-            # Automatically calculate dynamic min and max over the ROI bounding box
-            if roi_names:
+            # If band is categorical (e.g. Dynamic World label), default to class index range 0-8
+            if (band == "label" or "dynamicworld" in dataset.lower()) and vis_min is None and vis_max is None:
+                v_min = 0.0
+                v_max = 8.0
+            elif roi_names and (vis_min is None or vis_max is None):
+                # Automatically calculate dynamic min and max over the ROI bounding box only if not specified
                 try:
                     has_roi = False
                     if roi_type == "bbox":
@@ -826,7 +860,7 @@ def get_map_tiles(
                             roi_feat = lsib.filter(ee.Filter.inList("wld_rgn", names_list))
                         else:
                             roi_feat = lsib.filter(ee.Filter.inList("country_na", names_list))
-                        if roi_feat.size().getInfo() > 0:
+                        if roi_feat.limit(1).size().getInfo() > 0:
                             bounds_geom = roi_feat.geometry().bounds()
                             has_roi = True
                             

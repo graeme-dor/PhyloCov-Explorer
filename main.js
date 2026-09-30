@@ -1325,6 +1325,13 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
           hideRecommendedPalette();
         }
+
+        // Auto-select mode reducer for categorical land cover / classification bands
+        if (bandId === "label" || bandId.toLowerCase().includes("landcover") || bandId.toLowerCase().includes("lc")) {
+          const reducerSelect = document.getElementById("map_custom_reducer");
+          if (reducerSelect) reducerSelect.value = "mode";
+        }
+
         triggerMapUpdate();
       });
     }
@@ -1384,6 +1391,10 @@ document.addEventListener("DOMContentLoaded", () => {
             mapScaleSelect.value = "native";
             mapScaleCustom.style.display = "none";
             mapScaleCustom.required = false;
+          }
+
+          if (data.start_date && data.end_date) {
+            initDatasetSlider("custom", "map", { start: data.start_date, end: data.end_date });
           }
 
           if (data.type === "Image") {
@@ -1722,6 +1733,13 @@ document.addEventListener("DOMContentLoaded", () => {
           }
           
           queryUrl += `&band=${encodeURIComponent(band)}&reducer=${encodeURIComponent(reducer)}&multiplier=${multiplier}&offset=${offset}&palette=${encodeURIComponent(palette)}`;
+
+          const bandMeta = mapBandsMetadata.find(b => b.id === band);
+          if (bandMeta && bandMeta.vis) {
+            if (bandMeta.vis.min !== undefined && bandMeta.vis.max !== undefined) {
+              queryUrl += `&vis_min=${bandMeta.vis.min}&vis_max=${bandMeta.vis.max}`;
+            }
+          }
         }
 
         const response = await fetch(queryUrl);
