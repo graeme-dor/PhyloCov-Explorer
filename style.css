@@ -1737,5 +1737,28 @@ iframe.loaded {
   animation: mapOverlaySpin 1s linear infinite;
 }
 
+/* Stop / Cancel Download Button */
+.btn-cancel-task {
+  background: rgba(248, 81, 73, 0.1);
+  color: #ff7b72;
+  border: 1px solid rgba(248, 81, 73, 0.35);
+  font-family: inherit;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-cancel-task:hover {
+  background: rgba(248, 81, 73, 0.22);
+  border-color: #ff7b72;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(248, 81, 73, 0.25);
+}
 
 

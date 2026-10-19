@@ -2666,11 +2666,44 @@ document.addEventListener("DOMContentLoaded", () => {
         mapTimer.textContent = `Time Elapsed: ${mins}:${secs} | ETA: ${mapEstimatedText}`;
       }
 
-      mapForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        
+      let mapAbortController = null;
+      let mapPollTimeout = null;
+      let activeMapTaskId = null;
+      const mapCancelBtn = document.getElementById("mapCancelExportBtn");
+
+      function stopMapExport(customMessage = "Export stopped by user.") {
+        if (mapAbortController) {
+          mapAbortController.abort();
+          mapAbortController = null;
+        }
+        if (mapPollTimeout) {
+          clearTimeout(mapPollTimeout);
+          mapPollTimeout = null;
+        }
+        if (mapTimerInterval) {
+          clearInterval(mapTimerInterval);
+          mapTimerInterval = null;
+        }
+        if (activeMapTaskId) {
+          fetch(`${BACKEND_URL}/exports/${activeMapTaskId}/cancel`, { method: "POST" }).catch(() => {});
+          activeMapTaskId = null;
+        }
+        mapStatusText.textContent = "CANCELLED";
+        mapStatusMessage.textContent = customMessage;
+        mapStatusDot.style.backgroundColor = "#8b949e";
+        mapExportBtn.disabled = false;
+        mapExportBtn.textContent = "Start Backend Export";
+        if (mapCancelBtn) mapCancelBtn.style.display = "none";
+      }
+
+      if (mapCancelBtn) {
+        mapCancelBtn.addEventListener("click", () => stopMapExport());
+      }
+
+      async function handleMapExport() {
         mapExportBtn.disabled = true;
         mapExportBtn.textContent = "Starting...";
+        if (mapCancelBtn) mapCancelBtn.style.display = "block";
         mapExportStatus.style.display = "block";
         mapExportStatus.scrollIntoView({ behavior: 'smooth', block: 'end' });
         mapDownloadContainer.style.display = "none";
@@ -2706,6 +2739,7 @@ document.addEventListener("DOMContentLoaded", () => {
           mapExportStatus.style.display = "block";
           mapExportBtn.disabled = false;
           mapExportBtn.textContent = "Start Backend Export";
+          if (mapCancelBtn) mapCancelBtn.style.display = "none";
           if (mapTimerInterval) clearInterval(mapTimerInterval);
           mapTimer.style.display = "none";
           return;
@@ -2717,6 +2751,7 @@ document.addEventListener("DOMContentLoaded", () => {
             alert(roiType === "bbox_upload" ? "Please upload a coordinate file first." : "Please draw a bounding box on the map first.");
             mapExportBtn.disabled = false;
             mapExportBtn.textContent = "Start Backend Export";
+            if (mapCancelBtn) mapCancelBtn.style.display = "none";
             if (mapTimerInterval) clearInterval(mapTimerInterval);
             return;
           }
@@ -2741,29 +2776,52 @@ document.addEventListener("DOMContentLoaded", () => {
           payload.offset = parseFloat(document.getElementById("map_custom_offset").value) || 0.0;
         }
 
+        mapAbortController = new AbortController();
+
         try {
           const response = await fetch(`${BACKEND_URL}/exports`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            signal: mapAbortController.signal
           });
           const data = await response.json();
           if (!response.ok) throw new Error(data.detail || "Failed to start export");
 
+          activeMapTaskId = data.ee_task_id;
           pollMapTaskStatus(data.ee_task_id);
         } catch (error) {
-          mapStatusText.textContent = "FAILED";
-          mapStatusMessage.textContent = error.message;
-          mapStatusDot.style.backgroundColor = "#f85149";
+          if (error.name === "AbortError") {
+            mapStatusText.textContent = "CANCELLED";
+            mapStatusMessage.textContent = "Export stopped by user.";
+            mapStatusDot.style.backgroundColor = "#8b949e";
+          } else {
+            mapStatusText.textContent = "FAILED";
+            mapStatusMessage.textContent = error.message;
+            mapStatusDot.style.backgroundColor = "#f85149";
+          }
           mapExportBtn.disabled = false;
           mapExportBtn.textContent = "Start Backend Export";
+          if (mapCancelBtn) mapCancelBtn.style.display = "none";
           if (mapTimerInterval) clearInterval(mapTimerInterval);
         }
+      }
+
+      if (mapExportBtn) {
+        mapExportBtn.addEventListener("click", () => handleMapExport());
+      }
+
+      mapForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        // Prevent accidental submission via Enter key
       });
 
       async function pollMapTaskStatus(taskId) {
         try {
-          const response = await fetch(`${BACKEND_URL}/exports/${taskId}`);
+          mapAbortController = new AbortController();
+          const response = await fetch(`${BACKEND_URL}/exports/${taskId}`, {
+            signal: mapAbortController.signal
+          });
           const data = await response.json();
           if (!response.ok) throw new Error(data.detail || "Failed to fetch status");
 
@@ -2772,32 +2830,55 @@ document.addEventListener("DOMContentLoaded", () => {
           if (data.state === "READY" || data.state === "RUNNING") {
             mapStatusMessage.textContent = "Running in Earth Engine. This may take a while...";
             mapStatusDot.style.backgroundColor = "#e3b341";
-            setTimeout(() => pollMapTaskStatus(taskId), 10000);
+            mapPollTimeout = setTimeout(() => pollMapTaskStatus(taskId), 10000);
           } else if (data.state === "COMPLETED") {
             mapStatusMessage.textContent = "Completed! Generating link...";
             mapStatusDot.style.backgroundColor = "#2ea043";
             if (mapTimerInterval) clearInterval(mapTimerInterval);
+            if (mapCancelBtn) mapCancelBtn.style.display = "none";
+            activeMapTaskId = null;
             fetchMapDownloadLink(taskId);
+          } else if (data.state === "CANCELLED") {
+            mapStatusMessage.textContent = "Task cancelled.";
+            mapStatusDot.style.backgroundColor = "#8b949e";
+            mapExportBtn.disabled = false;
+            mapExportBtn.textContent = "Start Backend Export";
+            if (mapCancelBtn) mapCancelBtn.style.display = "none";
+            if (mapTimerInterval) clearInterval(mapTimerInterval);
+            activeMapTaskId = null;
           } else {
             mapStatusMessage.textContent = `Task ended: ${data.state}`;
             mapStatusDot.style.backgroundColor = "#f85149";
             mapExportBtn.disabled = false;
             mapExportBtn.textContent = "Start Backend Export";
+            if (mapCancelBtn) mapCancelBtn.style.display = "none";
             if (mapTimerInterval) clearInterval(mapTimerInterval);
+            activeMapTaskId = null;
           }
         } catch (error) {
-          mapStatusText.textContent = "ERROR";
-          mapStatusMessage.textContent = error.message;
-          mapStatusDot.style.backgroundColor = "#f85149";
+          if (error.name === "AbortError") {
+            mapStatusText.textContent = "CANCELLED";
+            mapStatusMessage.textContent = "Export stopped by user.";
+            mapStatusDot.style.backgroundColor = "#8b949e";
+          } else {
+            mapStatusText.textContent = "ERROR";
+            mapStatusMessage.textContent = error.message;
+            mapStatusDot.style.backgroundColor = "#f85149";
+          }
           mapExportBtn.disabled = false;
           mapExportBtn.textContent = "Start Backend Export";
+          if (mapCancelBtn) mapCancelBtn.style.display = "none";
           if (mapTimerInterval) clearInterval(mapTimerInterval);
+          activeMapTaskId = null;
         }
       }
 
       async function fetchMapDownloadLink(taskId) {
         try {
-          const response = await fetch(`${BACKEND_URL}/exports/${taskId}/download`);
+          mapAbortController = new AbortController();
+          const response = await fetch(`${BACKEND_URL}/exports/${taskId}/download`, {
+            signal: mapAbortController.signal
+          });
           const data = await response.json();
           if (!response.ok) throw new Error(data.detail || "Failed to get download URL");
 
@@ -2807,12 +2888,16 @@ document.addEventListener("DOMContentLoaded", () => {
           
           mapExportBtn.disabled = false;
           mapExportBtn.textContent = "Start Backend Export";
+          if (mapCancelBtn) mapCancelBtn.style.display = "none";
         } catch (error) {
-          mapStatusText.textContent = "ERROR";
-          mapStatusMessage.textContent = error.message;
-          mapStatusDot.style.backgroundColor = "#f85149";
+          if (error.name !== "AbortError") {
+            mapStatusText.textContent = "ERROR";
+            mapStatusMessage.textContent = error.message;
+            mapStatusDot.style.backgroundColor = "#f85149";
+          }
           mapExportBtn.disabled = false;
           mapExportBtn.textContent = "Start Backend Export";
+          if (mapCancelBtn) mapCancelBtn.style.display = "none";
         }
       }
       
@@ -3724,137 +3809,196 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       });
 
-      if (glmExtractionForm) {
-        glmExtractionForm.addEventListener("submit", async (e) => {
-          e.preventDefault();
-          if (!selectedGLMFileToSend) return;
+      let glmAbortController = null;
+      const glmCancelBtn = document.getElementById("glmCancelBtn");
 
-          const checkedDatasets = getSelectedGLMDatasets();
-          if (checkedDatasets.length === 0) return;
+      function stopGLMExtraction(customMessage = "Extraction stopped by user.") {
+        if (glmAbortController) {
+          glmAbortController.abort();
+          glmAbortController = null;
+        }
+        glmStatusDot.style.backgroundColor = "#8b949e";
+        glmStatusText.textContent = "CANCELLED";
+        glmStatusMessage.textContent = customMessage;
+        if (glmCancelBtn) glmCancelBtn.style.display = "none";
+        glmSubmitBtn.disabled = false;
+        updateGLMSubmitBtnState();
+      }
 
-          // Check if all selected datasets are completely disjoint from sample coordinates
-          const roiBounds = getActiveROIBounds();
-          if (roiBounds) {
-            const allOutside = checkedDatasets.every(d => checkSpatialCoverage(roiBounds, d).status === "outside");
-            if (allOutside) {
-              glmStatusPanel.style.display = "block";
-              glmStatusDot.style.backgroundColor = "#f85149";
-              glmStatusText.textContent = "BLOCKED";
-              glmStatusMessage.textContent = `Extraction blocked: The selected dataset(s) (${checkedDatasets.map(d => d.toUpperCase()).join(", ")}) fall completely outside the uploaded sample extent. Please select a dataset with coverage for this region (e.g. ERA5).`;
-              glmSubmitBtn.disabled = false;
-              glmSubmitBtn.textContent = "Extract Covariates";
-              glmSubmitBtn.style.opacity = "1";
-              glmSubmitBtn.style.cursor = "pointer";
-              return;
-            }
-          }
+      if (glmCancelBtn) {
+        glmCancelBtn.addEventListener("click", () => stopGLMExtraction());
+      }
 
-          // Prepare UI for loading
-          glmSubmitBtn.disabled = true;
-          glmSubmitBtn.textContent = `Extracting ${checkedDatasets.length} Layer${checkedDatasets.length > 1 ? 's' : ''}...`;
-          glmSubmitBtn.style.opacity = "0.5";
-          glmSubmitBtn.style.cursor = "not-allowed";
+      async function handleGLMExtraction() {
+        if (!selectedGLMFileToSend) return;
 
-          glmStatusPanel.style.display = "block";
-          glmStatusDot.style.backgroundColor = "#58a6ff";
-          glmStatusText.textContent = "EXTRACTING";
-          glmStatusMessage.textContent = `Uploading data and querying GEE across ${checkedDatasets.length} covariate layer${checkedDatasets.length > 1 ? 's' : ''} (${checkedDatasets.join(', ')})...`;
-          glmDownloadContainer.style.display = "none";
+        const checkedDatasets = getSelectedGLMDatasets();
+        if (checkedDatasets.length === 0) return;
 
-          const formData = new FormData();
-          formData.append("file", selectedGLMFileToSend);
-          formData.append("datasets", checkedDatasets.join(","));
-          formData.append("dataset", checkedDatasets[0]); // legacy fallback
-          if (selectedShapefileLayer) {
-            formData.append("layer_name", selectedShapefileLayer);
-          }
-
-          const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
-          const hasTemporal = checkedDatasets.some(d => d !== "srtm");
-          if (dateMode === "range" && hasTemporal) {
-            const startVal = document.getElementById("glm_start_date").value;
-            const endVal = document.getElementById("glm_end_date").value;
-            if (startVal && endVal) {
-              formData.append("start_date", startVal);
-              formData.append("end_date", endVal);
-            }
-          }
-
-          const generateMatricesCheckbox = document.getElementById("glm_generate_matrices_checkbox");
-          const locationColSelect = document.getElementById("glm_location_col_select");
-          const aggSelect = document.getElementById("glm_aggregation_select");
-          const zonalStatSelect = document.getElementById("glm_zonal_stat_select");
-
-          const shouldGenerateMatrices = generateMatricesCheckbox && generateMatricesCheckbox.checked && locationColSelect && locationColSelect.value;
-          if (shouldGenerateMatrices) {
-            formData.append("generate_matrices", "true");
-            formData.append("location_col", locationColSelect.value);
-          }
-
-          // Aggregation / Zonal reducer
-          const chosenAggregation = glmInputMode === "boundary"
-            ? (zonalStatSelect ? zonalStatSelect.value : "mean")
-            : (aggSelect ? aggSelect.value : "mean");
-          formData.append("matrix_aggregation", chosenAggregation);
-
-          try {
-            const response = await fetch(`${BACKEND_URL}/extract`, {
-              method: "POST",
-              body: formData
-            });
-
-            if (!response.ok) {
-              const errData = await response.json();
-              throw new Error(errData.detail || "Extraction failed");
-            }
-
-            const contentType = response.headers.get("content-type") || "";
-            const isZip = contentType.includes("application/zip") || contentType.includes("zip");
-            const isGeoJson = contentType.includes("geo+json") || contentType.includes("json");
-
-            const blob = await response.blob();
-            const downloadUrl = window.URL.createObjectURL(blob);
-
-            // Configure download link
-            glmDownloadLink.href = downloadUrl;
-            const origStem = selectedGLMFile.name.substring(0, selectedGLMFile.name.lastIndexOf('.')) || "samples";
-            const dsTag = checkedDatasets.length > 2 ? `multi_${checkedDatasets.length}_covariates` : checkedDatasets.join("_and_");
-            if (isZip) {
-              glmDownloadLink.download = `beast_glm_${dsTag}_${origStem}.zip`;
-              glmDownloadLink.textContent = "Download BEAST GLM Package (.zip) ⬇";
-            } else if (isGeoJson) {
-              glmDownloadLink.download = `enriched_${origStem}_${dsTag}.geojson`;
-              glmDownloadLink.textContent = "Download Enriched Boundaries (GeoJSON) ⬇";
-            } else {
-              glmDownloadLink.download = `enriched_${origStem}_${dsTag}.csv`;
-              glmDownloadLink.textContent = glmInputMode === "boundary" ? "Download Enriched Polygon CSV ⬇" : "Download Enriched CSV ⬇";
-            }
-
-            // Update UI success state
-            glmStatusDot.style.backgroundColor = "#238636";
-            glmStatusText.textContent = "COMPLETED";
-            glmStatusMessage.textContent = isZip 
-              ? `BEAST GLM predictor package (.zip) successfully generated with pairwise matrices across ${checkedDatasets.length} covariate layer${checkedDatasets.length > 1 ? 's' : ''}!` 
-              : (glmInputMode === "boundary"
-                ? `Boundary zonal covariate extraction (${chosenAggregation}) successfully completed across ${checkedDatasets.length} layer${checkedDatasets.length > 1 ? 's' : ''}!`
-                : `Point covariate extraction successfully completed across ${checkedDatasets.length} layer${checkedDatasets.length > 1 ? 's' : ''}!`);
-            glmDownloadContainer.style.display = "block";
-
-          } catch (error) {
-            console.error("GLM Extraction Error:", error);
+        // Check if all selected datasets are completely disjoint from sample coordinates
+        const roiBounds = getActiveROIBounds();
+        if (roiBounds) {
+          const allOutside = checkedDatasets.every(d => checkSpatialCoverage(roiBounds, d).status === "outside");
+          if (allOutside) {
+            glmStatusPanel.style.display = "block";
             glmStatusDot.style.backgroundColor = "#f85149";
-            glmStatusText.textContent = "ERROR";
-            let msg = error.message || "Failed to extract covariates.";
-            if (msg.includes("Load failed") || msg.includes("Failed to fetch")) {
-              msg = "Server connection lost or request timed out. This may happen with very large shapefile archives. Please try extracting fewer layers or a narrower date range.";
-            }
-            glmStatusMessage.textContent = msg;
-          } finally {
+            glmStatusText.textContent = "BLOCKED";
+            glmStatusMessage.textContent = `Extraction blocked: The selected dataset(s) (${checkedDatasets.map(d => d.toUpperCase()).join(", ")}) fall completely outside the uploaded sample extent. Please select a dataset with coverage for this region (e.g. ERA5).`;
             glmSubmitBtn.disabled = false;
-            updateGLMSubmitBtnState();
+            glmSubmitBtn.textContent = "Extract Covariates";
+            glmSubmitBtn.style.opacity = "1";
+            glmSubmitBtn.style.cursor = "pointer";
+            if (glmCancelBtn) glmCancelBtn.style.display = "none";
+            return;
+          }
+        }
+
+        // Prepare UI for loading
+        glmSubmitBtn.disabled = true;
+        glmSubmitBtn.textContent = `Extracting ${checkedDatasets.length} Layer${checkedDatasets.length > 1 ? 's' : ''}...`;
+        glmSubmitBtn.style.opacity = "0.5";
+        glmSubmitBtn.style.cursor = "not-allowed";
+        if (glmCancelBtn) glmCancelBtn.style.display = "block";
+
+        glmStatusPanel.style.display = "block";
+        glmStatusDot.style.backgroundColor = "#58a6ff";
+        glmStatusText.textContent = "EXTRACTING";
+        glmStatusMessage.textContent = `Uploading data and querying GEE across ${checkedDatasets.length} covariate layer${checkedDatasets.length > 1 ? 's' : ''} (${checkedDatasets.join(', ')})...`;
+        glmDownloadContainer.style.display = "none";
+
+        const formData = new FormData();
+        formData.append("file", selectedGLMFileToSend);
+        formData.append("datasets", checkedDatasets.join(","));
+        formData.append("dataset", checkedDatasets[0]); // legacy fallback
+        if (selectedShapefileLayer) {
+          formData.append("layer_name", selectedShapefileLayer);
+        }
+
+        const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
+        const hasTemporal = checkedDatasets.some(d => d !== "srtm");
+        if (dateMode === "range" && hasTemporal) {
+          const startVal = document.getElementById("glm_start_date").value;
+          const endVal = document.getElementById("glm_end_date").value;
+          if (startVal && endVal) {
+            formData.append("start_date", startVal);
+            formData.append("end_date", endVal);
+          }
+        }
+
+        const generateMatricesCheckbox = document.getElementById("glm_generate_matrices_checkbox");
+        const locationColSelect = document.getElementById("glm_location_col_select");
+        const aggSelect = document.getElementById("glm_aggregation_select");
+        const zonalStatSelect = document.getElementById("glm_zonal_stat_select");
+
+        const shouldGenerateMatrices = generateMatricesCheckbox && generateMatricesCheckbox.checked && locationColSelect && locationColSelect.value;
+        if (shouldGenerateMatrices) {
+          formData.append("generate_matrices", "true");
+          formData.append("location_col", locationColSelect.value);
+        }
+
+        // Aggregation / Zonal reducer
+        const chosenAggregation = glmInputMode === "boundary"
+          ? (zonalStatSelect ? zonalStatSelect.value : "mean")
+          : (aggSelect ? aggSelect.value : "mean");
+        formData.append("matrix_aggregation", chosenAggregation);
+
+        glmAbortController = new AbortController();
+
+        try {
+          const response = await fetch(`${BACKEND_URL}/extract`, {
+            method: "POST",
+            body: formData,
+            signal: glmAbortController.signal
+          });
+
+          if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.detail || "Extraction failed");
+          }
+
+          const contentType = response.headers.get("content-type") || "";
+          const isZip = contentType.includes("application/zip") || contentType.includes("zip");
+          const isGeoJson = contentType.includes("geo+json") || contentType.includes("json");
+
+          const blob = await response.blob();
+          const downloadUrl = window.URL.createObjectURL(blob);
+
+          // Configure download link
+          glmDownloadLink.href = downloadUrl;
+          const origStem = selectedGLMFile.name.substring(0, selectedGLMFile.name.lastIndexOf('.')) || "samples";
+          const dsTag = checkedDatasets.length > 2 ? `multi_${checkedDatasets.length}_covariates` : checkedDatasets.join("_and_");
+          if (isZip) {
+            glmDownloadLink.download = `beast_glm_${dsTag}_${origStem}.zip`;
+            glmDownloadLink.textContent = "Download BEAST GLM Package (.zip)";
+          } else if (isGeoJson) {
+            glmDownloadLink.download = `enriched_${origStem}_${dsTag}.geojson`;
+            glmDownloadLink.textContent = "Download Enriched Boundaries (GeoJSON)";
+          } else {
+            glmDownloadLink.download = `enriched_${origStem}_${dsTag}.csv`;
+            glmDownloadLink.textContent = glmInputMode === "boundary" ? "Download Enriched Polygon CSV" : "Download Enriched CSV";
+          }
+
+          // Update UI success state
+          glmStatusDot.style.backgroundColor = "#238636";
+          glmStatusText.textContent = "COMPLETED";
+          glmStatusMessage.textContent = isZip 
+            ? `BEAST GLM predictor package (.zip) successfully generated with pairwise matrices across ${checkedDatasets.length} covariate layer${checkedDatasets.length > 1 ? 's' : ''}!` 
+            : (glmInputMode === "boundary"
+              ? `Boundary zonal covariate extraction (${chosenAggregation}) successfully completed across ${checkedDatasets.length} layer${checkedDatasets.length > 1 ? 's' : ''}!`
+              : `Point covariate extraction successfully completed across ${checkedDatasets.length} layer${checkedDatasets.length > 1 ? 's' : ''}!`);
+          glmDownloadContainer.style.display = "block";
+
+        } catch (error) {
+          if (error.name === "AbortError") {
+            glmStatusDot.style.backgroundColor = "#8b949e";
+            glmStatusText.textContent = "CANCELLED";
+            glmStatusMessage.textContent = "Extraction stopped by user.";
+            return;
+          }
+          console.error("GLM Extraction Error:", error);
+          glmStatusDot.style.backgroundColor = "#f85149";
+          glmStatusText.textContent = "ERROR";
+          let msg = error.message || "Failed to extract covariates.";
+          if (msg.includes("Load failed") || msg.includes("Failed to fetch")) {
+            msg = "Server connection lost or request timed out. This may happen with very large shapefile archives. Please try extracting fewer layers or a narrower date range.";
+          }
+          glmStatusMessage.textContent = msg;
+        } finally {
+          if (glmCancelBtn) glmCancelBtn.style.display = "none";
+          glmAbortController = null;
+          glmSubmitBtn.disabled = false;
+          updateGLMSubmitBtnState();
+        }
+      }
+
+      if (glmSubmitBtn) {
+        glmSubmitBtn.addEventListener("click", () => {
+          if (!glmSubmitBtn.disabled) {
+            handleGLMExtraction();
           }
         });
       }
+
+      if (glmExtractionForm) {
+        glmExtractionForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          // Prevent accidental form submission via Enter key
+        });
+      }
+
+      // Block Enter key across all form inputs from unintentionally triggering exports/downloads
+      [mapForm, glmExtractionForm].forEach(form => {
+        if (form) {
+          form.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.keyCode === 13) {
+              if (e.target.tagName !== "TEXTAREA") {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+            }
+          });
+        }
+      });
 
       // Switcher Tab Interaction Logic
       const pipelineTabs = document.querySelectorAll(".pipeline-tab");

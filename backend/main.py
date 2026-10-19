@@ -777,6 +777,14 @@ def get_export_status(task_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving task status: {str(e)}")
 
+@app.post("/exports/{task_id}/cancel")
+def cancel_export_task(task_id: str):
+    try:
+        ee.data.cancelTask(task_id)
+        return {"status": "CANCELLED", "ee_task_id": task_id}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e), "ee_task_id": task_id}
+
 @app.get("/exports/{task_id}/download")
 def get_export_download_url(task_id: str):
     try:
