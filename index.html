@@ -542,6 +542,24 @@
                       <input type="date" id="map_end_date_input" class="date-picker-input">
                     </div>
                   </div>
+
+                  <!-- Map Preview Date Status & On-Demand Refresh Control -->
+                  <div class="map-preview-date-control" id="mapPreviewDateControl">
+                    <div class="map-preview-date-info">
+                      <div class="preview-badge-row">
+                        <span class="preview-badge" id="mapPreviewBadge">👁️ Representative 12-mo Preview</span>
+                      </div>
+                      <span class="preview-note" id="mapPreviewNote">Map displays a representative 12-month composite for spatial reference. Exact dates are applied during export.</span>
+                    </div>
+                    <button type="button" class="btn-refresh-preview" id="mapRefreshPreviewBtn" title="Recompute and render the map preview using your currently selected custom date range">
+                      <svg class="refresh-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                        <path d="M23 4v6h-6"></path>
+                        <path d="M1 20v-6h6"></path>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                      </svg>
+                      <span id="mapRefreshPreviewBtnText">Update Map Preview with Selected Dates</span>
+                    </button>
+                  </div>
                 </div>
                 <div class="form-group" style="margin-top: 1.5rem;">
                   <label for="map_scale_select">Export Resolution (m)</label>
@@ -759,6 +777,24 @@
                       <label for="glm_end_date_input">End Date</label>
                       <input type="date" id="glm_end_date_input" class="date-picker-input">
                     </div>
+                  </div>
+
+                  <!-- Pipeline 2 Map Preview Date Status & On-Demand Refresh Control -->
+                  <div class="map-preview-date-control" id="glmPreviewDateControl">
+                    <div class="map-preview-date-info">
+                      <div class="preview-badge-row">
+                        <span class="preview-badge" id="glmPreviewBadge">👁️ Representative 12-mo Preview</span>
+                      </div>
+                      <span class="preview-note" id="glmPreviewNote">Map displays a representative 12-month composite for spatial reference. Exact dates are applied during point extraction.</span>
+                    </div>
+                    <button type="button" class="btn-refresh-preview" id="glmRefreshPreviewBtn" title="Recompute and render the map preview using your currently selected custom date range">
+                      <svg class="refresh-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                        <path d="M23 4v6h-6"></path>
+                        <path d="M1 20v-6h6"></path>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                      </svg>
+                      <span id="glmRefreshPreviewBtnText">Update Map Preview with Selected Dates</span>
+                    </button>
                   </div>
 
                   <input type="hidden" id="glm_start_date" value="">

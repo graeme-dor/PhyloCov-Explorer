@@ -1585,5 +1585,109 @@ iframe.loaded {
 .tok-var { color: #ffa657; }
 .tok-punct { color: #7ee787; }
 
+/* =========================================================================
+   Representative Preview & On-Demand Date Refresh Control
+   ========================================================================= */
+.map-preview-date-control {
+  margin-top: 0.85rem;
+  padding: 10px 12px;
+  background: rgba(22, 27, 34, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.map-preview-date-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preview-badge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.preview-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(88, 166, 255, 0.12);
+  color: #79c0ff;
+  border: 1px solid rgba(88, 166, 255, 0.25);
+  width: fit-content;
+  transition: all 0.2s ease;
+}
+
+.preview-badge.custom-active {
+  background: rgba(46, 160, 67, 0.15);
+  color: #56d364;
+  border-color: rgba(46, 160, 67, 0.35);
+}
+
+.preview-note {
+  font-size: 0.76rem;
+  color: #8b949e;
+  line-height: 1.4;
+}
+
+.btn-refresh-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 12px;
+  background: rgba(88, 166, 255, 0.08);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: 6px;
+  color: #58a6ff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-refresh-preview:hover:not(:disabled) {
+  background: rgba(88, 166, 255, 0.18);
+  border-color: #58a6ff;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(88, 166, 255, 0.2);
+}
+
+.btn-refresh-preview:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.btn-refresh-preview.needs-refresh {
+  border-color: #58a6ff;
+  background: rgba(88, 166, 255, 0.16);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(88, 166, 255, 0.3);
+}
+
+.refresh-icon {
+  flex-shrink: 0;
+  transition: transform 0.3s ease;
+}
+
+.btn-refresh-preview:hover:not(:disabled) .refresh-icon {
+  transform: rotate(45deg);
+}
+
+.btn-refresh-preview.loading .refresh-icon {
+  animation: mapOverlaySpin 1s linear infinite;
+}
+
 
 

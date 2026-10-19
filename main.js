@@ -294,6 +294,76 @@ document.addEventListener("DOMContentLoaded", () => {
     updateSliderColorsAndValues(null, null, null, true);
   }
 
+  // Representative vs Custom Preview State Management
+  const previewState = {
+    continuous: {
+      isRepresentative: true,
+      repStart: null,
+      repEnd: null,
+      activeStart: null,
+      activeEnd: null,
+      selectedStart: null,
+      selectedEnd: null
+    },
+    discrete: {
+      isRepresentative: true,
+      repStart: null,
+      repEnd: null,
+      activeStart: null,
+      activeEnd: null,
+      selectedStart: null,
+      selectedEnd: null
+    }
+  };
+
+  function updatePreviewDateUI(type) {
+    const isMap = type === "map" || type === "continuous";
+    const state = isMap ? previewState.continuous : previewState.discrete;
+    const prefix = isMap ? "map" : "glm";
+    
+    const badge = document.getElementById(`${prefix}PreviewBadge`);
+    const note = document.getElementById(`${prefix}PreviewNote`);
+    const btn = document.getElementById(`${prefix}RefreshPreviewBtn`);
+    const btnText = document.getElementById(`${prefix}RefreshPreviewBtnText`);
+    
+    if (!badge || !note || !btn) return;
+    
+    const selectedStart = state.selectedStart || (isMap ? document.getElementById("map_start_date")?.value : document.getElementById("glm_start_date")?.value);
+    const selectedEnd = state.selectedEnd || (isMap ? document.getElementById("map_end_date")?.value : document.getElementById("glm_end_date")?.value);
+    
+    const isShowingCurrentSelection = !state.isRepresentative && 
+                                      state.activeStart === selectedStart && 
+                                      state.activeEnd === selectedEnd;
+
+    if (state.isRepresentative) {
+      badge.textContent = "👁️ Representative 12-mo Preview";
+      badge.classList.remove("custom-active");
+      
+      const repLabel = (state.repStart && state.repEnd) ? ` (${state.repStart} to ${state.repEnd})` : "";
+      if (selectedStart && selectedEnd && (selectedStart !== state.repStart || selectedEnd !== state.repEnd)) {
+        note.innerHTML = `Map is showing a representative 12-mo preview${repLabel}. <strong style="color: #58a6ff;">Selected for ${isMap ? "export" : "point extraction"}:</strong> ${selectedStart} to ${selectedEnd}.`;
+        btn.classList.add("needs-refresh");
+        if (btnText) btnText.textContent = `Update Map Preview to ${selectedStart} – ${selectedEnd}`;
+      } else {
+        note.textContent = `Map displays a representative 12-month composite for spatial reference. Exact dates are applied during ${isMap ? "export" : "point extraction"}.`;
+        btn.classList.remove("needs-refresh");
+        if (btnText) btnText.textContent = "Update Map Preview with Selected Dates";
+      }
+    } else if (isShowingCurrentSelection) {
+      badge.textContent = `✓ Custom Preview Active (${selectedStart} to ${selectedEnd})`;
+      badge.classList.add("custom-active");
+      note.textContent = `Map layer successfully recomputed for selected range ${selectedStart} to ${selectedEnd}.`;
+      btn.classList.remove("needs-refresh");
+      if (btnText) btnText.textContent = "Map Preview Up to Date";
+    } else {
+      badge.textContent = "⚠️ Staged Dates Differ from Map";
+      badge.classList.remove("custom-active");
+      note.innerHTML = `Map is currently showing <strong>${state.activeStart} to ${state.activeEnd}</strong>. <strong style="color: #58a6ff;">Selected for ${isMap ? "export" : "point extraction"}:</strong> ${selectedStart} to ${selectedEnd}.`;
+      btn.classList.add("needs-refresh");
+      if (btnText) btnText.textContent = `Update Map Preview to ${selectedStart} – ${selectedEnd}`;
+    }
+  }
+
   function initDatasetSlider(datasetVal, prefix, customDates = null) {
     const isMap = prefix === "map";
     const isGLM = prefix === "glm";
@@ -358,6 +428,27 @@ document.addEventListener("DOMContentLoaded", () => {
       const defaultStart = Math.max(0, totalMonths - 12); // Default to the last 12 months (most recent year)
       startSlider.value = defaultStart;
       endSlider.value = totalMonths;
+
+      const initialStartStr = getDateFromMonths(meta.start, defaultStart);
+      const initialEndStr = (meta.end) ? meta.end : getEndDateFromMonths(meta.start, totalMonths);
+
+      if (isMap) {
+        previewState.continuous.isRepresentative = true;
+        previewState.continuous.repStart = initialStartStr;
+        previewState.continuous.repEnd = initialEndStr;
+        previewState.continuous.activeStart = initialStartStr;
+        previewState.continuous.activeEnd = initialEndStr;
+        previewState.continuous.selectedStart = initialStartStr;
+        previewState.continuous.selectedEnd = initialEndStr;
+      } else if (isGLM) {
+        previewState.discrete.isRepresentative = true;
+        previewState.discrete.repStart = initialStartStr;
+        previewState.discrete.repEnd = initialEndStr;
+        previewState.discrete.activeStart = initialStartStr;
+        previewState.discrete.activeEnd = initialEndStr;
+        previewState.discrete.selectedStart = initialStartStr;
+        previewState.discrete.selectedEnd = initialEndStr;
+      }
       
       setupDualSlider(
         trackId, 
@@ -368,13 +459,22 @@ document.addEventListener("DOMContentLoaded", () => {
         hiddenEndId, 
         meta.start, 
         totalMonths, 
-        () => {
-          if ((isMap || isGLM) && typeof triggerMapUpdate === "function") {
-            triggerMapUpdate();
+        (startStr, endStr) => {
+          if (isMap) {
+            previewState.continuous.selectedStart = startStr;
+            previewState.continuous.selectedEnd = endStr;
+            updatePreviewDateUI("map");
+          } else if (isGLM) {
+            previewState.discrete.selectedStart = startStr;
+            previewState.discrete.selectedEnd = endStr;
+            updatePreviewDateUI("glm");
           }
         },
         meta
       );
+
+      if (isMap) updatePreviewDateUI("map");
+      if (isGLM) updatePreviewDateUI("glm");
     }
   }
 
@@ -2159,7 +2259,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let activeMapRequestId = 0;
     let activeMapAbortController = null;
 
-    async function triggerMapUpdate() {
+    async function triggerMapUpdate(options = {}) {
       // 1. Cancel previous pending in-flight request to eliminate race conditions & stale errors
       if (activeMapAbortController) {
         activeMapAbortController.abort();
@@ -2186,8 +2286,19 @@ document.addEventListener("DOMContentLoaded", () => {
           return; // Don't trigger map update until custom ID loaded
         }
 
-        startDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-01" : startDateInput.value;
-        endDate = isCustom && loadedMapAssetType === "Image" ? "2000-01-02" : endDateInput.value;
+        if (isCustom && loadedMapAssetType === "Image") {
+          startDate = "2000-01-01";
+          endDate = "2000-01-02";
+        } else if (options.forceDates) {
+          startDate = options.forceDates.start;
+          endDate = options.forceDates.end;
+        } else if (previewState.continuous.isRepresentative && previewState.continuous.repStart && previewState.continuous.repEnd) {
+          startDate = previewState.continuous.repStart;
+          endDate = previewState.continuous.repEnd;
+        } else {
+          startDate = startDateInput.value;
+          endDate = endDateInput.value;
+        }
         
         roiType = document.querySelector('input[name="roi_type"]:checked').value;
         isBBox = (roiType === "bbox_upload" || roiType === "bbox_draw");
@@ -2240,18 +2351,21 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
-        const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
-        if (dateMode === "exact") {
-          if (glmParsedDatesSpan) {
+        if (options.forceDates) {
+          startDate = options.forceDates.start;
+          endDate = options.forceDates.end;
+        } else if (previewState.discrete.isRepresentative && previewState.discrete.repStart && previewState.discrete.repEnd) {
+          startDate = previewState.discrete.repStart;
+          endDate = previewState.discrete.repEnd;
+        } else {
+          const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
+          if (dateMode === "exact" && glmParsedDatesSpan) {
             startDate = glmParsedDatesSpan.start;
             endDate = glmParsedDatesSpan.end;
           } else {
-            startDate = "";
-            endDate = "";
+            startDate = document.getElementById("glm_start_date").value;
+            endDate = document.getElementById("glm_end_date").value;
           }
-        } else {
-          startDate = document.getElementById("glm_start_date").value;
-          endDate = document.getElementById("glm_end_date").value;
         }
 
         if (!startDate || !endDate) {
@@ -2298,7 +2412,8 @@ document.addEventListener("DOMContentLoaded", () => {
         endDate,
         roiType,
         roiNames,
-        isBBox
+        isBBox,
+        isRepresentative: activePipeline === "continuous" ? previewState.continuous.isRepresentative : previewState.discrete.isRepresentative
       });
 
       if (mapLoadingOverlay) mapLoadingOverlay.style.display = "flex";
@@ -2353,6 +2468,17 @@ document.addEventListener("DOMContentLoaded", () => {
           maxZoom: 20
         }).addTo(map);
 
+        // Update active preview state & UI indicators
+        if (activePipeline === "continuous") {
+          previewState.continuous.activeStart = startDate;
+          previewState.continuous.activeEnd = endDate;
+          updatePreviewDateUI("map");
+        } else {
+          previewState.discrete.activeStart = startDate;
+          previewState.discrete.activeEnd = endDate;
+          updatePreviewDateUI("glm");
+        }
+
         // Auto-zoom to bounds if returned
         if (data.bounds) {
           map.fitBounds(data.bounds, {
@@ -2381,15 +2507,66 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    [startDateInput, endDateInput,
-     mapCustomBandSelect,
+    [mapCustomBandSelect,
      document.getElementById("map_custom_reducer"),
      document.getElementById("map_custom_multiplier"),
      document.getElementById("map_custom_offset"),
      document.getElementById("map_custom_palette")
     ].forEach(el => {
-      if (el) el.addEventListener("change", triggerMapUpdate);
+      if (el) el.addEventListener("change", () => triggerMapUpdate());
     });
+
+    const mapRefreshBtn = document.getElementById("mapRefreshPreviewBtn");
+    if (mapRefreshBtn) {
+      mapRefreshBtn.addEventListener("click", async () => {
+        const selectedStart = document.getElementById("map_start_date")?.value;
+        const selectedEnd = document.getElementById("map_end_date")?.value;
+        if (!selectedStart || !selectedEnd) return;
+        
+        mapRefreshBtn.disabled = true;
+        mapRefreshBtn.classList.add("loading");
+        const btnText = document.getElementById("mapRefreshPreviewBtnText");
+        if (btnText) btnText.textContent = "Updating Map Preview...";
+        
+        previewState.continuous.isRepresentative = false;
+        previewState.continuous.activeStart = selectedStart;
+        previewState.continuous.activeEnd = selectedEnd;
+        
+        try {
+          await triggerMapUpdate({ forceDates: { start: selectedStart, end: selectedEnd } });
+        } finally {
+          mapRefreshBtn.disabled = false;
+          mapRefreshBtn.classList.remove("loading");
+          updatePreviewDateUI("map");
+        }
+      });
+    }
+
+    const glmRefreshBtn = document.getElementById("glmRefreshPreviewBtn");
+    if (glmRefreshBtn) {
+      glmRefreshBtn.addEventListener("click", async () => {
+        const selectedStart = document.getElementById("glm_start_date")?.value;
+        const selectedEnd = document.getElementById("glm_end_date")?.value;
+        if (!selectedStart || !selectedEnd) return;
+        
+        glmRefreshBtn.disabled = true;
+        glmRefreshBtn.classList.add("loading");
+        const btnText = document.getElementById("glmRefreshPreviewBtnText");
+        if (btnText) btnText.textContent = "Updating Map Preview...";
+        
+        previewState.discrete.isRepresentative = false;
+        previewState.discrete.activeStart = selectedStart;
+        previewState.discrete.activeEnd = selectedEnd;
+        
+        try {
+          await triggerMapUpdate({ forceDates: { start: selectedStart, end: selectedEnd } });
+        } finally {
+          glmRefreshBtn.disabled = false;
+          glmRefreshBtn.classList.remove("loading");
+          updatePreviewDateUI("glm");
+        }
+      });
+    }
 
     if (countryInput) countryInput.addEventListener("change", handleROISelection);
     if (regionInput) regionInput.addEventListener("change", handleROISelection);
@@ -3443,13 +3620,13 @@ document.addEventListener("DOMContentLoaded", () => {
         radio.addEventListener("change", (e) => {
           activePipeline = "discrete";
           setGLMDateExtractionMode(e.target.value);
-          triggerMapUpdate();
         });
       });
 
       if (glmDatasetSelect) {
         glmDatasetSelect.addEventListener("change", () => {
           activePipeline = "discrete";
+          previewState.discrete.isRepresentative = true;
           updateGLMSubmitBtnState();
           
           const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
@@ -3473,15 +3650,32 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       // Switch active pipeline to continuous on map inputs interaction
-      [datasetSelect, startDateInput, endDateInput, countryInput, regionInput, mapCustomAssetInput, mapCustomBandSelect].forEach(el => {
+      [datasetSelect, countryInput, regionInput, mapCustomAssetInput, mapCustomBandSelect].forEach(el => {
         if (el) {
           el.addEventListener("change", () => {
             activePipeline = "continuous";
+            if (el === datasetSelect) {
+              previewState.continuous.isRepresentative = true;
+            }
             triggerMapUpdate();
           });
           el.addEventListener("input", () => {
             activePipeline = "continuous";
             triggerMapUpdate();
+          });
+        }
+      });
+
+      // Date inputs update staged extraction dates and UI without automatically fetching tiles
+      [startDateInput, endDateInput].forEach(el => {
+        if (el) {
+          el.addEventListener("change", () => {
+            activePipeline = "continuous";
+            if (previewState.continuous) {
+              previewState.continuous.selectedStart = startDateInput.value;
+              previewState.continuous.selectedEnd = endDateInput.value;
+              updatePreviewDateUI("map");
+            }
           });
         }
       });
