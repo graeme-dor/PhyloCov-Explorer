@@ -84,14 +84,14 @@
 
           <!-- Map Error Overlay -->
           <div id="mapErrorOverlay" class="map-floating-banner map-error-overlay" style="display: none;">
-            <span class="error-icon">⚠️</span>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f85149" stroke-width="2" style="margin-right: 6px; vertical-align: middle; flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
             <span id="mapErrorText" class="error-text">Failed to load map layer</span>
             <button type="button" id="mapErrorCloseBtn" class="error-close" title="Dismiss error">&times;</button>
           </div>
 
           <!-- Floating Spatial Coverage Banner -->
           <div id="spatialExtentBanner" class="map-floating-banner spatial-extent-banner" style="display: none;">
-            <span id="spatialExtentIcon" class="spatial-extent-banner-icon">⚠️</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spatial-extent-banner-icon" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
             <div class="spatial-extent-banner-body">
               <div id="spatialExtentTitle" class="spatial-extent-banner-title">Spatial Extent Warning</div>
               <div id="spatialExtentText" class="spatial-extent-banner-text">The selected region falls outside dataset coverage.</div>
@@ -453,7 +453,7 @@
                   
                   <!-- Continuous Pipeline Spatial Coverage Alert -->
                   <div id="roiExtentAlert" class="roi-coverage-alert" style="display: none;">
-                    <span class="spatial-extent-banner-icon" id="roiExtentAlertIcon">⚠️</span>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                     <div class="alert-text" id="roiExtentAlertText"></div>
                   </div>
                   
@@ -545,12 +545,20 @@
 
                   <!-- Map Preview Date Status & On-Demand Refresh Control -->
                   <div class="map-preview-date-control" id="mapPreviewDateControl">
-                    <div class="map-preview-date-info">
-                      <div class="preview-badge-row">
-                        <span class="preview-badge" id="mapPreviewBadge">👁️ Representative 12-mo Preview</span>
-                      </div>
-                      <span class="preview-note" id="mapPreviewNote">Map displays a representative 12-month composite for spatial reference. Exact dates are applied during export.</span>
+                    <div class="preview-badge-row">
+                      <span class="preview-badge" id="mapPreviewBadge">Representative (12-Mo)</span>
+                      <button type="button" class="preview-info-btn" id="mapPreviewInfoBtn" aria-label="Toggle preview details" title="Information about map preview">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <line x1="12" y1="16" x2="12" y2="12"></line>
+                          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        </svg>
+                      </button>
                     </div>
+                    <div class="preview-info-popover" id="mapPreviewInfoPopover" style="display: none;">
+                      The map displays a representative 12-month composite for fast spatial orientation and layer inspection. Exact dates selected above are applied during raster export or covariate extraction.
+                    </div>
+                    <div class="preview-staged-note" id="mapPreviewNote" style="display: none;"></div>
                     <button type="button" class="btn-refresh-preview" id="mapRefreshPreviewBtn" title="Recompute and render the map preview using your currently selected custom date range">
                       <svg class="refresh-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
                         <path d="M23 4v6h-6"></path>
@@ -603,8 +611,8 @@
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                     <label id="glm_step1_label" style="font-weight: 600; margin: 0;">1. Upload Sample Points</label>
                     <div class="pipeline-switcher" style="padding: 2px; margin-bottom: 0; background: rgba(0,0,0,0.3); border: 1px solid #30363d; border-radius: 6px;">
-                      <button type="button" class="pipeline-tab active" id="glm_mode_point_btn" data-glm-mode="point" style="padding: 2px 8px; font-size: 0.75rem; border-radius: 4px; border: none; cursor: pointer; background: var(--accent-color); color: white;">📍 Points</button>
-                      <button type="button" class="pipeline-tab" id="glm_mode_poly_btn" data-glm-mode="boundary" style="padding: 2px 8px; font-size: 0.75rem; border-radius: 4px; border: none; cursor: pointer; background: transparent; color: var(--text-muted);">🗺️ Boundaries</button>
+                      <button type="button" class="pipeline-tab active" id="glm_mode_point_btn" data-glm-mode="point" style="padding: 2px 8px; font-size: 0.75rem; border-radius: 4px; border: none; cursor: pointer; background: var(--accent-color); color: white;">Points</button>
+                      <button type="button" class="pipeline-tab" id="glm_mode_poly_btn" data-glm-mode="boundary" style="padding: 2px 8px; font-size: 0.75rem; border-radius: 4px; border: none; cursor: pointer; background: transparent; color: var(--text-muted);">Boundaries</button>
                     </div>
                   </div>
                   <div class="upload-dropzone" id="glm_upload_dropzone" style="padding: 1.5rem; border: 2px dashed rgba(255,255,255,0.15); border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s ease; background: rgba(255,255,255,0.01);">
@@ -613,13 +621,13 @@
                   </div>
                   <div id="glm_upload_status" style="font-size: 0.8rem; color: var(--accent-secondary); font-family: monospace; display: none; margin-top: 0.5rem; text-align: left;"></div>
                   <div id="glm_boundary_hint" style="display: none; font-size: 0.75rem; color: #8b949e; margin-top: 0.35rem; text-align: left; line-height: 1.4;">
-                    💡 Accepts <code>.geojson</code>, <code>.json</code>, or zipped ESRI Shapefiles (<code>.zip</code> containing <code>.shp</code> + <code>.dbf</code>) in WGS84 (EPSG:4326).
+                    Accepts <code>.geojson</code>, <code>.json</code>, or zipped ESRI Shapefiles (<code>.zip</code> containing <code>.shp</code> + <code>.dbf</code>) in WGS84 (EPSG:4326).
                   </div>
 
                   <!-- Dynamic Shapefile Multi-Layer Selector -->
                   <div id="glm_shapefile_layers_group" style="display: none; margin-top: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid #30363d; border-radius: 6px; padding: 0.65rem; text-align: left;">
                     <label style="font-size: 0.82rem; font-weight: 600; color: #58a6ff; display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.35rem;">
-                      <span>📁 Shapefile Layer in Archive:</span>
+                      <span>Shapefile Layer in Archive:</span>
                     </label>
                     <select id="glm_shapefile_layer_select" style="width: 100%; font-size: 0.85rem; padding: 0.4rem; background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px;"></select>
                     <div id="glm_shapefile_layer_hint" style="font-size: 0.72rem; color: #8b949e; margin-top: 0.3rem;">Multiple administrative layers detected in archive. Select which layer to extract.</div>
@@ -732,7 +740,7 @@
 
                   <!-- Discrete Pipeline Spatial Coverage Alert -->
                   <div id="glmCoverageAlert" class="roi-coverage-alert" style="display: none;">
-                    <span class="spatial-extent-banner-icon" id="glmCoverageAlertIcon">⚠️</span>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                     <div class="alert-text" id="glmCoverageAlertText"></div>
                   </div>
 
@@ -781,12 +789,20 @@
 
                   <!-- Pipeline 2 Map Preview Date Status & On-Demand Refresh Control -->
                   <div class="map-preview-date-control" id="glmPreviewDateControl">
-                    <div class="map-preview-date-info">
-                      <div class="preview-badge-row">
-                        <span class="preview-badge" id="glmPreviewBadge">👁️ Representative 12-mo Preview</span>
-                      </div>
-                      <span class="preview-note" id="glmPreviewNote">Map displays a representative 12-month composite for spatial reference. Exact dates are applied during point extraction.</span>
+                    <div class="preview-badge-row">
+                      <span class="preview-badge" id="glmPreviewBadge">Representative (12-Mo)</span>
+                      <button type="button" class="preview-info-btn" id="glmPreviewInfoBtn" aria-label="Toggle preview details" title="Information about map preview">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <line x1="12" y1="16" x2="12" y2="12"></line>
+                          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                        </svg>
+                      </button>
                     </div>
+                    <div class="preview-info-popover" id="glmPreviewInfoPopover" style="display: none;">
+                      The map displays a representative 12-month composite for fast spatial orientation and layer inspection. Exact dates selected above are applied during point extraction.
+                    </div>
+                    <div class="preview-staged-note" id="glmPreviewNote" style="display: none;"></div>
                     <button type="button" class="btn-refresh-preview" id="glmRefreshPreviewBtn" title="Recompute and render the map preview using your currently selected custom date range">
                       <svg class="refresh-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
                         <path d="M23 4v6h-6"></path>
@@ -964,7 +980,7 @@ Sample_003,-29.85,31.02,2021-08-10,Durban</pre>
         <!-- Modal Footer / Customization Note -->
         <div class="code-export-modal-footer">
           <div class="reproducibility-note">
-            💡 <strong>Reproducibility & Customization:</strong> Run this script locally with your Google Earth Engine credentials or execute in Google Colab / GEE Code Editor. You can modify reducer functions, integrate cloud masking, adjust resolution, or apply custom band math expressions.
+            <strong>Reproducibility & Customization:</strong> Run this script locally with your Google Earth Engine credentials or execute in Google Colab / GEE Code Editor. You can modify reducer functions, integrate cloud masking, adjust resolution, or apply custom band math expressions.
           </div>
         </div>
       </div>

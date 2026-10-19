@@ -336,29 +336,33 @@ document.addEventListener("DOMContentLoaded", () => {
                                       state.activeEnd === selectedEnd;
 
     if (state.isRepresentative) {
-      badge.textContent = "👁️ Representative 12-mo Preview";
+      badge.textContent = "Representative (12-Mo)";
       badge.classList.remove("custom-active");
       
       const repLabel = (state.repStart && state.repEnd) ? ` (${state.repStart} to ${state.repEnd})` : "";
       if (selectedStart && selectedEnd && (selectedStart !== state.repStart || selectedEnd !== state.repEnd)) {
-        note.innerHTML = `Map is showing a representative 12-mo preview${repLabel}. <strong style="color: #58a6ff;">Selected for ${isMap ? "export" : "point extraction"}:</strong> ${selectedStart} to ${selectedEnd}.`;
+        note.style.display = "block";
+        note.innerHTML = `Map preview shows 12-mo baseline${repLabel}. <strong style="color: #58a6ff;">Selected for ${isMap ? "export" : "point extraction"}:</strong> ${selectedStart} to ${selectedEnd}.`;
         btn.classList.add("needs-refresh");
         if (btnText) btnText.textContent = `Update Map Preview to ${selectedStart} – ${selectedEnd}`;
       } else {
-        note.textContent = `Map displays a representative 12-month composite for spatial reference. Exact dates are applied during ${isMap ? "export" : "point extraction"}.`;
+        note.style.display = "none";
+        note.innerHTML = "";
         btn.classList.remove("needs-refresh");
         if (btnText) btnText.textContent = "Update Map Preview with Selected Dates";
       }
     } else if (isShowingCurrentSelection) {
-      badge.textContent = `✓ Custom Preview Active (${selectedStart} to ${selectedEnd})`;
+      badge.textContent = `Custom Range Active (${selectedStart} to ${selectedEnd})`;
       badge.classList.add("custom-active");
-      note.textContent = `Map layer successfully recomputed for selected range ${selectedStart} to ${selectedEnd}.`;
+      note.style.display = "none";
+      note.innerHTML = "";
       btn.classList.remove("needs-refresh");
       if (btnText) btnText.textContent = "Map Preview Up to Date";
     } else {
-      badge.textContent = "⚠️ Staged Dates Differ from Map";
+      badge.textContent = "Staged Range Differs";
       badge.classList.remove("custom-active");
-      note.innerHTML = `Map is currently showing <strong>${state.activeStart} to ${state.activeEnd}</strong>. <strong style="color: #58a6ff;">Selected for ${isMap ? "export" : "point extraction"}:</strong> ${selectedStart} to ${selectedEnd}.`;
+      note.style.display = "block";
+      note.innerHTML = `Map currently shows <strong>${state.activeStart} to ${state.activeEnd}</strong>. <strong style="color: #58a6ff;">Selected for ${isMap ? "export" : "point extraction"}:</strong> ${selectedStart} to ${selectedEnd}.`;
       btn.classList.add("needs-refresh");
       if (btnText) btnText.textContent = `Update Map Preview to ${selectedStart} – ${selectedEnd}`;
     }
@@ -1219,9 +1223,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Basemap switcher control in top-right
     const baseMaps = {
-      "🌙 Dark Canvas": darkCanvas,
-      "🛰️ Satellite": satellite,
-      "🗺️ Street Map": osm
+      "Dark Canvas": darkCanvas,
+      "Satellite": satellite,
+      "Street Map": osm
     };
     L.control.layers(baseMaps, null, { position: "topright", collapsed: true }).addTo(map);
 
@@ -1716,11 +1720,11 @@ document.addEventListener("DOMContentLoaded", () => {
       if (latDisjoint || lonDisjoint) {
         let suggestion = "";
         if (datasetKey === "chirps") {
-          suggestion = "💡 Recommendation: Switch to a global dataset such as ERA5 Daily or ERA5-Land Monthly for worldwide precipitation & temperature coverage.";
+          suggestion = "Recommendation: Switch to a global dataset such as ERA5 Daily or ERA5-Land Monthly for worldwide precipitation & temperature coverage.";
         } else if (datasetKey === "srtm") {
-          suggestion = "💡 Recommendation: For elevation data outside 56°S–60°N, consider Copernicus GLO-30 DEM or custom high-latitude digital elevation models.";
+          suggestion = "Recommendation: For elevation data outside 56°S–60°N, consider Copernicus GLO-30 DEM or custom high-latitude digital elevation models.";
         } else if (datasetKey === "modis_ndvi") {
-          suggestion = "💡 Recommendation: Polar and high-latitude zones (>80°N) lack MODIS vegetation coverage.";
+          suggestion = "Recommendation: Polar and high-latitude zones (>80°N) lack MODIS vegetation coverage.";
         }
 
         return {
@@ -1737,9 +1741,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const lonPartial = (roiBounds.minLon < db.minLon || roiBounds.maxLon > db.maxLon);
 
       if (latPartial || lonPartial) {
-        let suggestion = "💡 Tip: Map tiles and extracted covariates will only be present for the portion within the dataset extent; areas beyond the boundary will appear blank or contain missing values.";
+        let suggestion = "Note: Map tiles and extracted covariates will only be present for the portion within the dataset extent; areas beyond the boundary will appear blank or contain missing values.";
         if (datasetKey === "chirps") {
-          suggestion = "💡 Tip: Only areas south of 50°N will show rainfall data. For full coverage across northern regions, consider using ERA5 Daily.";
+          suggestion = "Note: Only areas south of 50°N will show rainfall data. For full coverage across northern regions, consider using ERA5 Daily.";
         }
 
         return {
@@ -1857,7 +1861,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (spatialExtentBanner) {
         if (result.status === "outside" || result.status === "partial") {
           spatialExtentBanner.className = `spatial-extent-banner ${result.status}`;
-          if (spatialExtentIcon) spatialExtentIcon.textContent = result.status === "outside" ? "⚠️" : "ℹ️";
           if (spatialExtentTitle) spatialExtentTitle.textContent = result.title;
           if (spatialExtentText) spatialExtentText.textContent = result.message;
           if (spatialExtentSuggestion) {
@@ -1878,7 +1881,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (roiExtentAlert && roiExtentAlertText) {
         if (activePipeline === "continuous" && (result.status === "outside" || result.status === "partial")) {
           roiExtentAlert.className = `roi-coverage-alert ${result.status}`;
-          if (roiExtentAlertIcon) roiExtentAlertIcon.textContent = result.status === "outside" ? "⚠️" : "ℹ️";
           roiExtentAlertText.innerHTML = `<strong>${result.title}</strong>${result.message}`;
           roiExtentAlert.style.display = "flex";
         } else {
@@ -1904,7 +1906,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const previewRes = checkSpatialCoverage(roiBounds, previewRadio.value);
         if (previewRes.status === "outside" || previewRes.status === "partial") {
           glmCoverageAlert.className = `roi-coverage-alert ${previewRes.status}`;
-          if (glmCoverageAlertIcon) glmCoverageAlertIcon.textContent = previewRes.status === "outside" ? "⚠️" : "ℹ️";
           glmCoverageAlertText.innerHTML = `<strong>Map Preview: ${previewRes.title}</strong>${previewRes.message}`;
           glmCoverageAlert.style.display = "flex";
           return;
@@ -1927,12 +1928,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (outsideDatasets.length > 0) {
         glmCoverageAlert.className = "roi-coverage-alert outside";
-        if (glmCoverageAlertIcon) glmCoverageAlertIcon.textContent = "⚠️";
         glmCoverageAlertText.innerHTML = `<strong>Coverage Warning for Extraction:</strong> Uploaded coordinates fall outside ${outsideDatasets.join(", ")} coverage. Extraction will yield NaN / empty values for these layers.`;
         glmCoverageAlert.style.display = "flex";
       } else if (partialDatasets.length > 0) {
         glmCoverageAlert.className = "roi-coverage-alert partial";
-        if (glmCoverageAlertIcon) glmCoverageAlertIcon.textContent = "ℹ️";
         glmCoverageAlertText.innerHTML = `<strong>Partial Coverage Notice:</strong> Some points/polygons extend beyond the boundary of ${partialDatasets.join(", ")}.`;
         glmCoverageAlert.style.display = "flex";
       } else {
@@ -2064,7 +2063,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         opt.innerHTML = `
           <span>${labelHtml}</span>
-          ${isSelected ? '<span style="font-size:0.75rem; color:#58a6ff; font-weight:600;">✓ Added</span>' : ''}
+          ${isSelected ? '<span style="font-size:0.75rem; color:#58a6ff; font-weight:600;">Added</span>' : ''}
         `;
 
         opt.addEventListener("click", () => {
@@ -2567,6 +2566,45 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
     }
+
+    // Info button popover toggles for Pipeline 1 & Pipeline 2
+    const mapInfoBtn = document.getElementById("mapPreviewInfoBtn");
+    const mapInfoPopover = document.getElementById("mapPreviewInfoPopover");
+    if (mapInfoBtn && mapInfoPopover) {
+      mapInfoBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isVisible = mapInfoPopover.style.display !== "none";
+        mapInfoPopover.style.display = isVisible ? "none" : "block";
+        mapInfoBtn.classList.toggle("active", !isVisible);
+      });
+    }
+
+    const glmInfoBtn = document.getElementById("glmPreviewInfoBtn");
+    const glmInfoPopover = document.getElementById("glmPreviewInfoPopover");
+    if (glmInfoBtn && glmInfoPopover) {
+      glmInfoBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isVisible = glmInfoPopover.style.display !== "none";
+        glmInfoPopover.style.display = isVisible ? "none" : "block";
+        glmInfoBtn.classList.toggle("active", !isVisible);
+      });
+    }
+
+    // Dismiss popovers when clicking outside
+    document.addEventListener("click", (e) => {
+      if (mapInfoPopover && mapInfoPopover.style.display !== "none") {
+        if (!mapInfoPopover.contains(e.target) && !mapInfoBtn?.contains(e.target)) {
+          mapInfoPopover.style.display = "none";
+          mapInfoBtn?.classList.remove("active");
+        }
+      }
+      if (glmInfoPopover && glmInfoPopover.style.display !== "none") {
+        if (!glmInfoPopover.contains(e.target) && !glmInfoBtn?.contains(e.target)) {
+          glmInfoPopover.style.display = "none";
+          glmInfoBtn?.classList.remove("active");
+        }
+      }
+    });
 
     if (countryInput) countryInput.addEventListener("change", handleROISelection);
     if (regionInput) regionInput.addEventListener("change", handleROISelection);
@@ -3096,7 +3134,7 @@ document.addEventListener("DOMContentLoaded", () => {
       async function inspectAndRenderBoundary(file, requestedLayer = null) {
         setGLMInputMode("boundary");
         glmUploadText.textContent = `Inspecting ${file.name}...`;
-        glmUploadStatus.textContent = "🔍 Parsing geometries, coordinate reference system, and attributes...";
+        glmUploadStatus.textContent = "Parsing geometries, coordinate reference system, and attributes...";
         glmUploadStatus.style.color = "#58a6ff";
         glmUploadStatus.style.display = "block";
 
@@ -3125,7 +3163,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const isZip = file.name.toLowerCase().endsWith(".zip");
           const layerTag = (isZip && data.selected_layer) ? ` (Layer: ${data.selected_layer})` : "";
           glmUploadText.textContent = `Selected: ${file.name}${layerTag} (${(file.size / 1024).toFixed(1)} KB)`;
-          glmUploadStatus.textContent = `✓ Loaded ${data.feature_count} boundary polygon${data.feature_count > 1 ? "s" : ""} across ${data.property_keys?.length || 0} attributes.`;
+          glmUploadStatus.textContent = `Loaded ${data.feature_count} boundary polygon${data.feature_count > 1 ? "s" : ""} across ${data.property_keys?.length || 0} attributes.`;
           glmUploadStatus.style.color = "#3fb950";
 
           // Shapefile multi-layer dropdown handling
@@ -3208,10 +3246,10 @@ document.addEventListener("DOMContentLoaded", () => {
               if (locationHint) {
                 if (uniqueLocs.length >= 2) {
                   const sampleList = uniqueLocs.slice(0, 4).join(", ") + (uniqueLocs.length > 4 ? `, +${uniqueLocs.length - 4} more` : "");
-                  locationHint.textContent = `✓ Found ${uniqueLocs.length} discrete locations (${sampleList})`;
+                  locationHint.textContent = `Found ${uniqueLocs.length} discrete locations (${sampleList})`;
                   locationHint.style.color = "#3fb950";
                 } else if (uniqueLocs.length === 1) {
-                  locationHint.textContent = `⚠️ Only 1 location found ("${uniqueLocs[0]}"). BEAST GLMs require at least 2 distinct states.`;
+                  locationHint.textContent = `Only 1 location found ("${uniqueLocs[0]}"). BEAST GLMs require at least 2 distinct states.`;
                   locationHint.style.color = "#d29922";
                 } else {
                   locationHint.textContent = "No valid values found in this attribute.";
@@ -3378,10 +3416,10 @@ document.addEventListener("DOMContentLoaded", () => {
               if (locationHint) {
                 if (uniqueLocs.length >= 2) {
                   const sampleList = uniqueLocs.slice(0, 4).join(", ") + (uniqueLocs.length > 4 ? `, +${uniqueLocs.length - 4} more` : "");
-                  locationHint.textContent = `✓ Found ${uniqueLocs.length} discrete locations (${sampleList})`;
+                  locationHint.textContent = `Found ${uniqueLocs.length} discrete locations (${sampleList})`;
                   locationHint.style.color = "#3fb950";
                 } else if (uniqueLocs.length === 1) {
-                  locationHint.textContent = `⚠️ Only 1 location found ("${uniqueLocs[0]}"). BEAST GLMs require at least 2 distinct states.`;
+                  locationHint.textContent = `Only 1 location found ("${uniqueLocs[0]}"). BEAST GLMs require at least 2 distinct states.`;
                   locationHint.style.color = "#d29922";
                 } else {
                   locationHint.textContent = "No valid values found in this column.";
@@ -4514,7 +4552,7 @@ Export.table.toDrive({
         copyCodeBtn.addEventListener("click", async () => {
           try {
             await navigator.clipboard.writeText(currentRawCode);
-            if (copyCodeBtnText) copyCodeBtnText.textContent = "✓ Copied!";
+            if (copyCodeBtnText) copyCodeBtnText.textContent = "Copied!";
             copyCodeBtn.style.borderColor = "var(--accent-color)";
             copyCodeBtn.style.color = "var(--accent-color)";
             setTimeout(() => {
