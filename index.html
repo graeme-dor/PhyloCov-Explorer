@@ -23,6 +23,15 @@
           <li><a href="./datasets.html">Datasets</a></li>
           <li><a href="./about.html">About & Methods</a></li>
           <li>
+            <button id="navOpenCodeBtn" class="nav-code-btn" type="button" title="Inspect & Export Pipeline Code">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px; vertical-align: middle;">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+              </svg>
+              <span>Export Script</span>
+            </button>
+          </li>
+          <li>
             <a href="https://github.com/graeme-dor/PhyloCov-Explorer" target="_blank" class="github-link" title="GitHub Repository">
               <svg height="24" width="24" viewBox="0 0 16 16" fill="currentColor">
                 <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
@@ -67,14 +76,28 @@
           <style>
             @keyframes mapOverlaySpin { 100% { transform: rotate(360deg); } }
           </style>
-          <div id="mapLoadingOverlay" style="display: none; position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(33, 38, 45, 0.9); border: 1px solid #30363d; border-radius: 20px; padding: 8px 16px; z-index: 1000; align-items: center; justify-content: center; color: #c9d1d9; font-weight: 500; font-size: 0.9rem; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+          <!-- Map Loading Overlay -->
+          <div id="mapLoadingOverlay" class="map-floating-banner map-loading-overlay" style="display: none;">
             <div style="width: 14px; height: 14px; border: 2px solid #58a6ff; border-top-color: transparent; border-radius: 50%; animation: mapOverlaySpin 1s linear infinite; margin-right: 8px;"></div>
-            Loading Map Layer...
+            <span>Loading Map Layer...</span>
           </div>
-          <div id="mapErrorOverlay" style="display: none; position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(248, 81, 73, 0.95); border: 1px solid rgba(248, 81, 73, 0.3); border-radius: 20px; padding: 8px 16px; z-index: 1000; align-items: center; justify-content: center; color: #ffffff; font-weight: 500; font-size: 0.9rem; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
-            <span style="margin-right: 8px;">⚠️</span>
-            <span id="mapErrorText">Failed to load map layer</span>
-            <button type="button" id="mapErrorCloseBtn" style="background: none; border: none; color: white; margin-left: 12px; cursor: pointer; font-weight: bold; font-size: 1.1rem; line-height: 1; padding: 0 4px;">&times;</button>
+
+          <!-- Map Error Overlay -->
+          <div id="mapErrorOverlay" class="map-floating-banner map-error-overlay" style="display: none;">
+            <span class="error-icon">⚠️</span>
+            <span id="mapErrorText" class="error-text">Failed to load map layer</span>
+            <button type="button" id="mapErrorCloseBtn" class="error-close" title="Dismiss error">&times;</button>
+          </div>
+
+          <!-- Floating Spatial Coverage Banner -->
+          <div id="spatialExtentBanner" class="map-floating-banner spatial-extent-banner" style="display: none;">
+            <span id="spatialExtentIcon" class="spatial-extent-banner-icon">⚠️</span>
+            <div class="spatial-extent-banner-body">
+              <div id="spatialExtentTitle" class="spatial-extent-banner-title">Spatial Extent Warning</div>
+              <div id="spatialExtentText" class="spatial-extent-banner-text">The selected region falls outside dataset coverage.</div>
+              <div id="spatialExtentSuggestion" class="spatial-extent-banner-suggestion" style="display: none;"></div>
+            </div>
+            <button type="button" id="spatialExtentCloseBtn" class="spatial-extent-banner-close" title="Dismiss notice">&times;</button>
           </div>
           
           <!-- Native UI Overlay -->
@@ -117,7 +140,22 @@
                     </label>
                   </div>
                   
-                  <select id="map_country" name="country" style="width: 100%;">
+                  <!-- Searchable Country Combobox -->
+                  <div class="searchable-combobox-wrapper" id="country_combobox_wrapper">
+                    <div class="combobox-input-box">
+                      <svg class="combobox-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input type="text" id="map_country_search" class="combobox-search-input" placeholder="Search country (e.g. Sweden, UK)..." autocomplete="off" spellcheck="false">
+                      <button type="button" id="map_country_dropdown_btn" class="combobox-arrow-btn" aria-label="Toggle country list">▾</button>
+                    </div>
+                    <div id="country_dropdown_menu" class="combobox-dropdown-menu" style="display: none;">
+                      <div id="country_dropdown_list" class="combobox-options-list"></div>
+                    </div>
+                  </div>
+                  
+                  <select id="map_country" name="country" style="display: none;">
                     <option value="" disabled selected>Select a country...</option>
                     <option value="Afghanistan">Afghanistan</option>
                     <option value="Albania">Albania</option>
@@ -411,7 +449,13 @@
                     <option value="srtm">SRTM Elevation (30m)</option>
                     <option value="custom">Custom GEE Asset...</option>
                   </select>
-                  <div id="datasetInfoBox" style="font-size: 0.8rem; color: #8b949e; margin-top: 0.35rem; font-family: monospace;">Select a dataset to configure resolution and temporal range</div>
+                  <div id="datasetInfoBox" style="font-size: 0.8rem; color: #8b949e; margin-top: 0.35rem; font-family: monospace;">Select a dataset to configure resolution, spatial extent, and temporal range</div>
+                  
+                  <!-- Continuous Pipeline Spatial Coverage Alert -->
+                  <div id="roiExtentAlert" class="roi-coverage-alert" style="display: none;">
+                    <span class="spatial-extent-banner-icon" id="roiExtentAlertIcon">⚠️</span>
+                    <div class="alert-text" id="roiExtentAlertText"></div>
+                  </div>
                   
                   <!-- Custom GEE Asset Panel -->
                   <div id="map_custom_panel" style="display: none; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1rem; margin-top: 0.75rem; flex-direction: column; gap: 0.75rem;">
@@ -512,6 +556,13 @@
                 </div>
   
                 <button type="submit" class="export-btn" id="mapExportBtn">Start Backend Export</button>
+                <button type="button" class="btn-inspect-code" id="mapInspectCodeBtn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="16 18 22 12 16 6"></polyline>
+                    <polyline points="8 6 2 12 8 18"></polyline>
+                  </svg>
+                  <span>Inspect & Export Script (Python / R)</span>
+                </button>
               </form>
   
               <div class="export-status" id="mapExportStatus" style="display: none; margin-top: 1rem;">
@@ -577,7 +628,7 @@
                         <span style="font-size: 0.88rem; font-weight: 500;">CHIRPS Precipitation</span>
                       </div>
                       <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~5.5km</span>
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~5.5km · 50°S–50°N</span>
                         <input type="radio" name="glm_preview_dataset" value="chirps" title="Preview on Map" style="cursor: pointer;">
                       </div>
                     </label>
@@ -588,7 +639,7 @@
                         <span style="font-size: 0.88rem; font-weight: 500;">ERA5 Daily Temperature</span>
                       </div>
                       <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~27.8km</span>
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~27.8km · Global</span>
                         <input type="radio" name="glm_preview_dataset" value="era5" title="Preview on Map" style="cursor: pointer;">
                       </div>
                     </label>
@@ -599,7 +650,7 @@
                         <span style="font-size: 0.88rem; font-weight: 500;">ERA5-Land Monthly Temp</span>
                       </div>
                       <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~11.1km</span>
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~11.1km · Global</span>
                         <input type="radio" name="glm_preview_dataset" value="era5_land_monthly" title="Preview on Map" style="cursor: pointer;">
                       </div>
                     </label>
@@ -610,7 +661,7 @@
                         <span style="font-size: 0.88rem; font-weight: 500;">MODIS NDVI (Vegetation)</span>
                       </div>
                       <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">250m</span>
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">250m · 60°S–80°N</span>
                         <input type="radio" name="glm_preview_dataset" value="modis_ndvi" title="Preview on Map" style="cursor: pointer;">
                       </div>
                     </label>
@@ -621,7 +672,7 @@
                         <span style="font-size: 0.88rem; font-weight: 500;">MODIS LST Day (Surface Temp)</span>
                       </div>
                       <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~5.6km</span>
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~5.6km · Global</span>
                         <input type="radio" name="glm_preview_dataset" value="modis_lst_day" title="Preview on Map" style="cursor: pointer;">
                       </div>
                     </label>
@@ -632,7 +683,7 @@
                         <span style="font-size: 0.88rem; font-weight: 500;">MODIS LST Night (Surface Temp)</span>
                       </div>
                       <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~5.6km</span>
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">~5.6km · Global</span>
                         <input type="radio" name="glm_preview_dataset" value="modis_lst_night" title="Preview on Map" style="cursor: pointer;">
                       </div>
                     </label>
@@ -643,7 +694,7 @@
                         <span style="font-size: 0.88rem; font-weight: 500;">SRTM Elevation</span>
                       </div>
                       <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">30m</span>
+                        <span style="font-size: 0.72rem; color: #8b949e; font-family: monospace;">30m · 56°S–60°N</span>
                         <input type="radio" name="glm_preview_dataset" value="srtm" title="Preview on Map" style="cursor: pointer;">
                       </div>
                     </label>
@@ -660,6 +711,12 @@
                     <option value="modis_lst_night">MODIS Monthly LST Night (5.6km)</option>
                     <option value="srtm">SRTM Elevation (30m)</option>
                   </select>
+
+                  <!-- Discrete Pipeline Spatial Coverage Alert -->
+                  <div id="glmCoverageAlert" class="roi-coverage-alert" style="display: none;">
+                    <span class="spatial-extent-banner-icon" id="glmCoverageAlertIcon">⚠️</span>
+                    <div class="alert-text" id="glmCoverageAlertText"></div>
+                  </div>
 
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem;">
                     <span id="glm_selection_count" style="font-size: 0.78rem; color: #8b949e; font-weight: 600;">0 layers selected for extraction</span>
@@ -759,6 +816,13 @@
                 </div>
 
                 <button type="submit" class="export-btn" id="glmSubmitBtn" disabled style="opacity: 0.5; cursor: not-allowed; transition: all 0.2s; font-weight: 600; padding: 0.75rem 1rem; margin-top: 0.5rem;">Extract Point Covariates</button>
+                <button type="button" class="btn-inspect-code" id="glmInspectCodeBtn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="16 18 22 12 16 6"></polyline>
+                    <polyline points="8 6 2 12 8 18"></polyline>
+                  </svg>
+                  <span>Inspect & Export Script (Python / R)</span>
+                </button>
               </form>
 
               <div class="export-status" id="glmStatusPanel" style="display: none; margin-top: 1.5rem; border-top: 1px solid #30363d; padding-top: 1rem;">
@@ -803,6 +867,72 @@ Sample_003,-29.85,31.02,2021-08-10,Durban</pre>
         </div>
       </section>
     </main>
+
+    <!-- Reproducibility & Script Export Modal Dialog -->
+    <div id="codeExportModal" class="code-export-modal-backdrop" style="display: none;">
+      <div class="code-export-modal-container">
+        <!-- Modal Header -->
+        <div class="code-export-modal-header">
+          <div class="code-export-title-group">
+            <div class="code-export-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+              </svg>
+            </div>
+            <div>
+              <h3>Reproduce Pipeline Script</h3>
+              <p id="codeExportPipelineSubtitle">Continuous Covariate Raster Composite (GeoTIFF) Export</p>
+            </div>
+          </div>
+          <button type="button" id="closeCodeExportBtn" class="code-modal-close-btn" title="Close (Esc)">&times;</button>
+        </div>
+
+        <!-- Modal Toolbar & Language Selector -->
+        <div class="code-export-toolbar">
+          <div class="code-lang-tabs">
+            <button type="button" class="code-lang-tab active" data-lang="python">
+              <span class="lang-dot python"></span> Python (ee / geemap)
+            </button>
+            <button type="button" class="code-lang-tab" data-lang="r">
+              <span class="lang-dot r"></span> R (rgee / terra)
+            </button>
+            <button type="button" class="code-lang-tab" data-lang="javascript">
+              <span class="lang-dot js"></span> GEE Code Editor (JS)
+            </button>
+          </div>
+          <div class="code-action-buttons">
+            <button type="button" id="copyCodeBtn" class="btn-code-action" title="Copy code to clipboard">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              <span id="copyCodeBtnText">Copy Code</span>
+            </button>
+            <button type="button" id="downloadCodeBtn" class="btn-code-action" title="Download script file">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span id="downloadCodeBtnText">Download .py</span>
+            </button>
+            <a id="openGeeEditorLink" href="https://code.earthengine.google.com" target="_blank" class="btn-code-action btn-gee-link" title="Open Google Earth Engine Code Editor">
+              <span>Open GEE Editor ↗</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Code Content Area -->
+        <div class="code-editor-viewport">
+          <div class="code-editor-header">
+            <span id="codeEditorFilename">phylocov_pipeline.py</span>
+            <span class="code-editor-badge" id="codeEditorConfigBadge">Pipeline 1 · Continuous Composite</span>
+          </div>
+          <pre class="code-pre"><code id="codeExportPre" class="code-content"></code></pre>
+        </div>
+
+        <!-- Modal Footer / Customization Note -->
+        <div class="code-export-modal-footer">
+          <div class="reproducibility-note">
+            💡 <strong>Reproducibility & Customization:</strong> Run this script locally with your Google Earth Engine credentials or execute in Google Colab / GEE Code Editor. You can modify reducer functions, integrate cloud masking, adjust resolution, or apply custom band math expressions.
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>

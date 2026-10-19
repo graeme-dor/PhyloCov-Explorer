@@ -114,7 +114,12 @@ PRESETS = {
         "is_monthly": False,
         "palette": ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494'],
         "vis_min": 0.0,
-        "vis_max": 50.0
+        "vis_max": 50.0,
+        "min_lat": -50.0,
+        "max_lat": 50.0,
+        "min_lon": -180.0,
+        "max_lon": 180.0,
+        "extent_desc": "50°S to 50°N (Quasi-Global)"
     },
     "era5": {
         "asset": "ECMWF/ERA5/DAILY",
@@ -125,7 +130,12 @@ PRESETS = {
         "is_monthly": False,
         "palette": ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026'],
         "vis_min": 0.0,
-        "vis_max": 40.0
+        "vis_max": 40.0,
+        "min_lat": -90.0,
+        "max_lat": 90.0,
+        "min_lon": -180.0,
+        "max_lon": 180.0,
+        "extent_desc": "Global (90°S to 90°N)"
     },
     "era5_land_monthly": {
         "asset": "ECMWF/ERA5_LAND/MONTHLY_AGGR",
@@ -136,7 +146,12 @@ PRESETS = {
         "is_monthly": True,
         "palette": ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026'],
         "vis_min": 0.0,
-        "vis_max": 40.0
+        "vis_max": 40.0,
+        "min_lat": -90.0,
+        "max_lat": 90.0,
+        "min_lon": -180.0,
+        "max_lon": 180.0,
+        "extent_desc": "Global Land (90°S to 90°N)"
     },
     "modis_lst_day": {
         "asset": "MODIS/061/MOD21C3",
@@ -147,7 +162,12 @@ PRESETS = {
         "is_monthly": True,
         "palette": ['#313695', '#4575b4', '#74add1', '#ffffbf', '#fee090', '#f46d43', '#a50026'],
         "vis_min": 0.0,
-        "vis_max": 40.0
+        "vis_max": 40.0,
+        "min_lat": -90.0,
+        "max_lat": 90.0,
+        "min_lon": -180.0,
+        "max_lon": 180.0,
+        "extent_desc": "Global Land (90°S to 90°N)"
     },
     "modis_lst_night": {
         "asset": "MODIS/061/MOD21C3",
@@ -158,7 +178,12 @@ PRESETS = {
         "is_monthly": True,
         "palette": ['#053061', '#2166ac', '#4393c3', '#f7f7f7', '#fddbc7', '#d6604f', '#b2182b'],
         "vis_min": -10.0,
-        "vis_max": 25.0
+        "vis_max": 25.0,
+        "min_lat": -90.0,
+        "max_lat": 90.0,
+        "min_lon": -180.0,
+        "max_lon": 180.0,
+        "extent_desc": "Global Land (90°S to 90°N)"
     },
 
     "modis_ndvi": {
@@ -170,7 +195,12 @@ PRESETS = {
         "is_monthly": False,
         "palette": ['#FFFFFF', '#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400', '#3E8601', '#207401', '#056201', '#004C00', '#023B01', '#012E01', '#011D01', '#011301'],
         "vis_min": 0.0,
-        "vis_max": 1.0
+        "vis_max": 1.0,
+        "min_lat": -60.0,
+        "max_lat": 80.0,
+        "min_lon": -180.0,
+        "max_lon": 180.0,
+        "extent_desc": "Global Land (60°S to 80°N)"
     },
     "srtm": {
         "asset": "USGS/SRTMGL1_003",
@@ -181,7 +211,12 @@ PRESETS = {
         "is_monthly": False,
         "palette": ['#000000', '#478FCD', '#86C58E', '#AFC35E', '#8F7131', '#B78D4C', '#E2B8A6', '#FFFFFF'],
         "vis_min": 0.0,
-        "vis_max": 3000.0
+        "vis_max": 3000.0,
+        "min_lat": -56.0,
+        "max_lat": 60.0,
+        "min_lon": -180.0,
+        "max_lon": 180.0,
+        "extent_desc": "56°S to 60°N (Near-Global)"
     }
 }
 
@@ -342,9 +377,16 @@ def get_dataset_limits():
     limits = {}
     
     def fetch_limit(key):
-        if key == "srtm":
-            return key, {"start": None, "end": None}
         info = PRESETS[key]
+        extent_meta = {
+            "min_lat": info.get("min_lat"),
+            "max_lat": info.get("max_lat"),
+            "min_lon": info.get("min_lon"),
+            "max_lon": info.get("max_lon"),
+            "extent_desc": info.get("extent_desc")
+        }
+        if key == "srtm":
+            return key, {"start": None, "end": None, **extent_meta}
         asset_id = info["asset"]
         try:
             col = ee.ImageCollection(asset_id)
@@ -357,10 +399,10 @@ def get_dataset_limits():
             if earliest_time and latest_time:
                 start_date = datetime.utcfromtimestamp(earliest_time / 1000.0).strftime("%Y-%m-%d")
                 end_date = datetime.utcfromtimestamp(latest_time / 1000.0).strftime("%Y-%m-%d")
-                return key, {"start": start_date, "end": end_date}
+                return key, {"start": start_date, "end": end_date, **extent_meta}
         except Exception as e:
             print(f"Error querying GEE limits for {key}: {e}")
-        return key, None
+        return key, {"start": None, "end": None, **extent_meta}
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         results = executor.map(fetch_limit, PRESETS.keys())
@@ -624,6 +666,33 @@ def create_export(req: ExportRequest):
             status_code=500, 
             detail=f"Earth Engine error checking country: {str(e)}"
         )
+
+    # Spatial Coverage Extent Validation before launching export
+    if preset_key in PRESETS:
+        preset = PRESETS[preset_key]
+        if req.roi_type == "bbox":
+            coords = [float(x) for x in req.roi_names[0].split(",")]
+            # coords: minLat, minLon, maxLat, maxLon
+            if coords[0] > preset["max_lat"] or coords[2] < preset["min_lat"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"The selected bounding box falls completely outside {preset_key.upper()} spatial coverage ({preset['extent_desc']})."
+                )
+        else:
+            try:
+                geom_dict = roi.geometry().bounds().getInfo()
+                if geom_dict and 'coordinates' in geom_dict and geom_dict['coordinates']:
+                    c = geom_dict['coordinates'][0]
+                    lats = [p[1] for p in c]
+                    if min(lats) > preset["max_lat"] or max(lats) < preset["min_lat"]:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"The selected region '{', '.join(req.roi_names)}' falls completely outside {preset_key.upper()} spatial coverage ({preset['extent_desc']})."
+                        )
+            except HTTPException:
+                raise
+            except Exception as e_bounds:
+                print(f"Extent check warning during export: {e_bounds}")
 
     try:
         # Create roiMask
@@ -954,6 +1023,25 @@ def get_map_tiles(
                 lats = [p[1] for p in coords]
                 # Leaflet bounds format: [[south, west], [north, east]]
                 bounds = [[min(lats), min(lons)], [max(lats), max(lons)]]
+
+        # Spatial Extent Validation: Fail fast if ROI is completely outside dataset coverage
+        if preset_key in PRESETS and roi_names:
+            preset = PRESETS[preset_key]
+            if roi_type == "bbox":
+                coords = [float(x) for x in roi_names.split(",")]
+                if coords[0] > preset["max_lat"] or coords[2] < preset["min_lat"]:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"The selected bounding box falls completely outside {preset_key.upper()} spatial coverage ({preset['extent_desc']}). No data exists for this region."
+                    )
+            elif bounds:
+                min_roi_lat = bounds[0][0]
+                max_roi_lat = bounds[1][0]
+                if min_roi_lat > preset["max_lat"] or max_roi_lat < preset["min_lat"]:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"The selected region '{roi_names}' falls completely outside {preset_key.upper()} spatial coverage ({preset['extent_desc']}). No data exists for this region."
+                    )
 
         # Get the map ID dictionary which contains the tile fetcher URL
         map_id_dict = ee.Image(img).getMapId(vis_params)

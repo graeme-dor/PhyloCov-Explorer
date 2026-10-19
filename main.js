@@ -24,60 +24,74 @@ document.addEventListener("DOMContentLoaded", () => {
   const modisEnd = getPastDate(1);
   const chirpsEnd = getPastDate(2);
   
-  // Shared Dataset Metadata
+  // Shared Dataset Metadata with Spatial Extents and Native Resolutions
   const datasetMetadata = {
     chirps: { 
       res: 5566, 
-      text: "Native Resolution: ~5.5km | Temporal: Daily",
+      extentDesc: "50°S to 50°N (Quasi-Global)",
+      bounds: { minLat: -50.0, maxLat: 50.0, minLon: -180.0, maxLon: 180.0 },
+      text: "Native Resolution: ~5.5km | Extent: 50°S–50°N (Quasi-Global) | Temporal: Daily",
       start: "1981-01-01",
       end: chirpsEnd,
       rangeText: `Available: 1981-01-01 to ${chirpsEnd} (~2 months lag)`
     },
     era5: { 
       res: 27830, 
-      text: "Native Resolution: ~27.8km | Temporal: Daily",
+      extentDesc: "Global (90°S to 90°N)",
+      bounds: { minLat: -90.0, maxLat: 90.0, minLon: -180.0, maxLon: 180.0 },
+      text: "Native Resolution: ~27.8km | Extent: Global | Temporal: Daily",
       start: "1979-01-01",
       end: era5End,
       rangeText: `Available: 1979-01-01 to ${era5End} (~3 months lag)`
     },
     era5_land_monthly: { 
       res: 11132, 
-      text: "Native Resolution: ~11.1km | Temporal: Monthly",
+      extentDesc: "Global Land (90°S to 90°N)",
+      bounds: { minLat: -90.0, maxLat: 90.0, minLon: -180.0, maxLon: 180.0 },
+      text: "Native Resolution: ~11.1km | Extent: Global Land | Temporal: Monthly",
       start: "1950-01-01",
       end: era5End,
       rangeText: `Available: 1950-01-01 to ${era5End} (~2-3 months lag)`
     },
     modis_ndvi: { 
       res: 250, 
-      text: "Native Resolution: 250m | Temporal: 16-day",
+      extentDesc: "60°S to 80°N (Global Land)",
+      bounds: { minLat: -60.0, maxLat: 80.0, minLon: -180.0, maxLon: 180.0 },
+      text: "Native Resolution: 250m | Extent: 60°S–80°N (Global Land) | Temporal: 16-day",
       start: "2000-02-18",
       end: modisEnd,
       rangeText: `Available: 2000-02-18 to ${modisEnd} (~1 month lag)`
     },
     modis_lst_day: { 
       res: 5600, 
-      text: "Native Resolution: ~5.6km | Temporal: Monthly",
+      extentDesc: "Global Land (90°S to 90°N)",
+      bounds: { minLat: -90.0, maxLat: 90.0, minLon: -180.0, maxLon: 180.0 },
+      text: "Native Resolution: ~5.6km | Extent: Global Land | Temporal: Monthly",
       start: "2000-03-05",
       end: modisEnd,
       rangeText: `Available: 2000-03-05 to ${modisEnd} (~1 month lag)`
     },
     modis_lst_night: { 
       res: 5600, 
-      text: "Native Resolution: ~5.6km | Temporal: Monthly",
+      extentDesc: "Global Land (90°S to 90°N)",
+      bounds: { minLat: -90.0, maxLat: 90.0, minLon: -180.0, maxLon: 180.0 },
+      text: "Native Resolution: ~5.6km | Extent: Global Land | Temporal: Monthly",
       start: "2000-03-05",
       end: modisEnd,
       rangeText: `Available: 2000-03-05 to ${modisEnd} (~1 month lag)`
     },
     srtm: { 
       res: 30, 
-      text: "Native Resolution: 30m | Temporal: Static",
+      extentDesc: "56°S to 60°N (Near-Global)",
+      bounds: { minLat: -56.0, maxLat: 60.0, minLon: -180.0, maxLon: 180.0 },
+      text: "Native Resolution: 30m | Extent: 56°S–60°N (Near-Global) | Temporal: Static",
       start: null,
       end: null,
       rangeText: "Available: Static topography dataset (Feb 2000)"
     }
   };
 
-  // Fetch real-time available date limits from GEE backend
+  // Fetch real-time available date limits and extents from GEE backend
   async function loadDatasetLimits() {
     try {
       const response = await fetch(`${BACKEND_URL}/datasets/limits`);
@@ -87,6 +101,17 @@ document.addEventListener("DOMContentLoaded", () => {
           if (datasetMetadata[key] && limit) {
             datasetMetadata[key].start = limit.start;
             datasetMetadata[key].end = limit.end;
+            if (limit.extent_desc) {
+              datasetMetadata[key].extentDesc = limit.extent_desc;
+            }
+            if (limit.min_lat !== undefined && limit.max_lat !== undefined) {
+              datasetMetadata[key].bounds = {
+                minLat: limit.min_lat,
+                maxLat: limit.max_lat,
+                minLon: limit.min_lon ?? -180.0,
+                maxLon: limit.max_lon ?? 180.0
+              };
+            }
             if (key === "srtm") continue;
             datasetMetadata[key].rangeText = `Available: ${limit.start} to ${limit.end} (Real-time GEE)`;
           }
@@ -132,7 +157,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return `${monthNames[s.getUTCMonth()]} ${s.getUTCFullYear()}`;
   }
 
-  function setupDualSlider(sliderTrackId, startSliderId, endSliderId, dateLabelId, hiddenStartId, hiddenEndId, baseDate, totalMonths, onChangeCallback) {
+  function setupDualSlider(sliderTrackId, startSliderId, endSliderId, dateLabelId, hiddenStartId, hiddenEndId, baseDate, totalMonths, onChangeCallback, meta = null) {
     const sliderTrack = document.getElementById(sliderTrackId);
     const startSlider = document.getElementById(startSliderId);
     const endSlider = document.getElementById(endSliderId);
@@ -151,8 +176,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const startPicker = document.getElementById(`${prefix}_start_date_input`);
     const endPicker = document.getElementById(`${prefix}_end_date_input`);
 
-    const minDate = baseDate;
-    const maxDate = getEndDateFromMonths(baseDate, totalMonths);
+    const minDate = (meta && meta.start) ? meta.start : baseDate;
+    const maxDate = (meta && meta.end) ? meta.end : getEndDateFromMonths(baseDate, totalMonths);
 
     if (startPicker) {
       startPicker.min = minDate;
@@ -181,9 +206,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const pct2 = (val2 / totalMonths) * 100;
       sliderTrack.style.background = `linear-gradient(to right, #30363d 0%, #30363d ${pct1}%, var(--accent-color) ${pct1}%, var(--accent-color) ${pct2}%, #30363d ${pct2}%, #30363d 100%)`;
 
-      const startDateStr = exactStartDate || getDateFromMonths(baseDate, val1);
-      const endDateStr = exactEndDate || getEndDateFromMonths(baseDate, val2);
+      let startDateStr = exactStartDate || getDateFromMonths(baseDate, val1);
+      let endDateStr = exactEndDate || (val2 === totalMonths && meta && meta.end ? meta.end : getEndDateFromMonths(baseDate, val2));
       
+      if (startDateStr < minDate) startDateStr = minDate;
+      if (endDateStr > maxDate) endDateStr = maxDate;
+      if (startDateStr > endDateStr) startDateStr = endDateStr;
+
       if (hiddenStart) hiddenStart.value = startDateStr;
       if (hiddenEnd) hiddenEnd.value = endDateStr;
 
@@ -293,6 +322,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (datasetVal === "srtm") {
       row.style.display = "none";
+      if ((isMap || isGLM) && typeof triggerMapUpdate === "function") {
+        triggerMapUpdate();
+      }
       return;
     }
 
@@ -340,7 +372,8 @@ document.addEventListener("DOMContentLoaded", () => {
           if ((isMap || isGLM) && typeof triggerMapUpdate === "function") {
             triggerMapUpdate();
           }
-        }
+        },
+        meta
       );
     }
   }
@@ -1103,6 +1136,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let activePipeline = "continuous"; // "continuous" or "discrete"
     let glmInputMode = "point"; // "point" or "boundary"
     let glmPointsBBox = null;
+    let glmBoundaryBBox = null;
     let glmParsedDatesSpan = null;
     let glmUploadedMarkersLayer = null;
     let glmUploadedBBoxLayer = null;
@@ -1248,6 +1282,26 @@ document.addEventListener("DOMContentLoaded", () => {
     const mapErrorText = document.getElementById("mapErrorText");
     const mapErrorCloseBtn = document.getElementById("mapErrorCloseBtn");
     const mapDateRow = document.getElementById("map_date_row");
+
+    // Spatial extent warning elements
+    const spatialExtentBanner = document.getElementById("spatialExtentBanner");
+    const spatialExtentIcon = document.getElementById("spatialExtentIcon");
+    const spatialExtentTitle = document.getElementById("spatialExtentTitle");
+    const spatialExtentText = document.getElementById("spatialExtentText");
+    const spatialExtentSuggestion = document.getElementById("spatialExtentSuggestion");
+    const spatialExtentCloseBtn = document.getElementById("spatialExtentCloseBtn");
+    const roiExtentAlert = document.getElementById("roiExtentAlert");
+    const roiExtentAlertText = document.getElementById("roiExtentAlertText");
+    const roiExtentAlertIcon = document.getElementById("roiExtentAlertIcon");
+    const glmCoverageAlert = document.getElementById("glmCoverageAlert");
+    const glmCoverageAlertText = document.getElementById("glmCoverageAlertText");
+    const glmCoverageAlertIcon = document.getElementById("glmCoverageAlertIcon");
+
+    if (spatialExtentCloseBtn) {
+      spatialExtentCloseBtn.addEventListener("click", () => {
+        if (spatialExtentBanner) spatialExtentBanner.style.display = "none";
+      });
+    }
 
     if (mapErrorCloseBtn) {
       mapErrorCloseBtn.addEventListener("click", () => {
@@ -1431,6 +1485,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (datasetSelect) {
       datasetSelect.addEventListener("change", () => {
         updateDatasetUI(datasetSelect.value, datasetInfoBox, "map");
+        updateSpatialCoverageAlerts();
         
         if (datasetSelect.value === "custom") {
           if (mapCustomPanel) mapCustomPanel.style.display = "flex";
@@ -1540,15 +1595,496 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
+    function formatLatRange(minLat, maxLat) {
+      const minStr = minLat < 0 ? `${Math.abs(minLat).toFixed(1)}°S` : `${minLat.toFixed(1)}°N`;
+      const maxStr = maxLat < 0 ? `${Math.abs(maxLat).toFixed(1)}°S` : `${maxLat.toFixed(1)}°N`;
+      return `${minStr} to ${maxStr}`;
+    }
+
+    function checkSpatialCoverage(roiBounds, datasetKey) {
+      if (!roiBounds || !datasetKey) return { status: "valid" };
+      const meta = datasetMetadata[datasetKey];
+      if (!meta || !meta.bounds) return { status: "valid" };
+
+      const db = meta.bounds;
+      const extentText = meta.extentDesc || `${db.minLat}° to ${db.maxLat}°`;
+
+      // 1. Check completely outside (disjoint in lat or lon)
+      const latDisjoint = (roiBounds.minLat > db.maxLat || roiBounds.maxLat < db.minLat);
+      const lonDisjoint = (roiBounds.minLon > db.maxLon || roiBounds.maxLon < db.minLon);
+
+      if (latDisjoint || lonDisjoint) {
+        let suggestion = "";
+        if (datasetKey === "chirps") {
+          suggestion = "💡 Recommendation: Switch to a global dataset such as ERA5 Daily or ERA5-Land Monthly for worldwide precipitation & temperature coverage.";
+        } else if (datasetKey === "srtm") {
+          suggestion = "💡 Recommendation: For elevation data outside 56°S–60°N, consider Copernicus GLO-30 DEM or custom high-latitude digital elevation models.";
+        } else if (datasetKey === "modis_ndvi") {
+          suggestion = "💡 Recommendation: Polar and high-latitude zones (>80°N) lack MODIS vegetation coverage.";
+        }
+
+        return {
+          status: "outside",
+          severity: "error",
+          title: "Outside Dataset Extent",
+          message: `${roiBounds.label || "The selected region"} (${formatLatRange(roiBounds.minLat, roiBounds.maxLat)}) lies completely outside ${datasetKey.toUpperCase()} coverage (${extentText}). No data is available for this area.`,
+          suggestion
+        };
+      }
+
+      // 2. Check partially outside
+      const latPartial = (roiBounds.minLat < db.minLat || roiBounds.maxLat > db.maxLat);
+      const lonPartial = (roiBounds.minLon < db.minLon || roiBounds.maxLon > db.maxLon);
+
+      if (latPartial || lonPartial) {
+        let suggestion = "💡 Tip: Map tiles and extracted covariates will only be present for the portion within the dataset extent; areas beyond the boundary will appear blank or contain missing values.";
+        if (datasetKey === "chirps") {
+          suggestion = "💡 Tip: Only areas south of 50°N will show rainfall data. For full coverage across northern regions, consider using ERA5 Daily.";
+        }
+
+        return {
+          status: "partial",
+          severity: "warning",
+          title: "Partial Spatial Coverage",
+          message: `${roiBounds.label || "The selected region"} (${formatLatRange(roiBounds.minLat, roiBounds.maxLat)}) extends beyond ${datasetKey.toUpperCase()} coverage (${extentText}).`,
+          suggestion
+        };
+      }
+
+      return { status: "valid" };
+    }
+
+    function getActiveROIBounds() {
+      if (activePipeline === "continuous") {
+        const type = document.querySelector('input[name="roi_type"]:checked')?.value || "country";
+        if (type === "bbox_upload" || type === "bbox_draw") {
+          if (currentCustomBBox) {
+            return {
+              minLat: currentCustomBBox.minLat,
+              minLon: currentCustomBBox.minLon,
+              maxLat: currentCustomBBox.maxLat,
+              maxLon: currentCustomBBox.maxLon,
+              label: type === "bbox_upload" ? "Uploaded Extent" : "Drawn Extent",
+              type: type
+            };
+          }
+          return null;
+        }
+
+        if (selectedROIs.size === 0) return null;
+        let minLat = 90, minLon = 180, maxLat = -90, maxLon = -180;
+        let found = false;
+        const names = Array.from(selectedROIs);
+        names.forEach(name => {
+          let b = null;
+          if (type === "country" && countryBounds[name]) {
+            b = countryBounds[name];
+            minLat = Math.min(minLat, b[0]);
+            minLon = Math.min(minLon, b[1]);
+            maxLat = Math.max(maxLat, b[2]);
+            maxLon = Math.max(maxLon, b[3]);
+            found = true;
+          } else if (type === "region" && CONTINENT_BOUNDS[name]) {
+            const cb = CONTINENT_BOUNDS[name];
+            minLat = Math.min(minLat, cb[0][0]);
+            minLon = Math.min(minLon, cb[0][1]);
+            maxLat = Math.max(maxLat, cb[1][0]);
+            maxLon = Math.max(maxLon, cb[1][1]);
+            found = true;
+          }
+        });
+
+        if (found) {
+          const label = names.length === 1 ? `"${names[0]}"` : `${names.length} selected ${type}s (${names.slice(0, 3).join(", ")}${names.length > 3 ? "..." : ""})`;
+          return {
+            minLat,
+            minLon,
+            maxLat,
+            maxLon,
+            label,
+            type
+          };
+        }
+        return null;
+      } else {
+        // Discrete pipeline
+        if (glmPointsBBox) {
+          return {
+            minLat: glmPointsBBox.minLat,
+            minLon: glmPointsBBox.minLon,
+            maxLat: glmPointsBBox.maxLat,
+            maxLon: glmPointsBBox.maxLon,
+            label: "Uploaded Sample Points",
+            type: "points"
+          };
+        }
+        if (glmBoundaryBBox) {
+          return {
+            minLat: glmBoundaryBBox.minLat,
+            minLon: glmBoundaryBBox.minLon,
+            maxLat: glmBoundaryBBox.maxLat,
+            maxLon: glmBoundaryBBox.maxLon,
+            label: "Uploaded Boundary Polygons",
+            type: "boundary"
+          };
+        }
+        if (glmUploadedGeoJsonLayer && typeof glmUploadedGeoJsonLayer.getBounds === "function") {
+          const b = glmUploadedGeoJsonLayer.getBounds();
+          if (b && b.isValid && b.isValid()) {
+            return {
+              minLat: b.getSouth(),
+              minLon: b.getWest(),
+              maxLat: b.getNorth(),
+              maxLon: b.getEast(),
+              label: "Uploaded Boundary Polygons",
+              type: "boundary"
+            };
+          }
+        }
+        return null;
+      }
+    }
+
+    function updateSpatialCoverageAlerts() {
+      const activeDataset = activePipeline === "continuous" 
+        ? (datasetSelect ? datasetSelect.value : "")
+        : (glmDatasetSelect ? glmDatasetSelect.value : "");
+      
+      const roiBounds = getActiveROIBounds();
+      const result = checkSpatialCoverage(roiBounds, activeDataset);
+
+      // 1. Update Floating Banner over Map
+      if (spatialExtentBanner) {
+        if (result.status === "outside" || result.status === "partial") {
+          spatialExtentBanner.className = `spatial-extent-banner ${result.status}`;
+          if (spatialExtentIcon) spatialExtentIcon.textContent = result.status === "outside" ? "⚠️" : "ℹ️";
+          if (spatialExtentTitle) spatialExtentTitle.textContent = result.title;
+          if (spatialExtentText) spatialExtentText.textContent = result.message;
+          if (spatialExtentSuggestion) {
+            if (result.suggestion) {
+              spatialExtentSuggestion.textContent = result.suggestion;
+              spatialExtentSuggestion.style.display = "block";
+            } else {
+              spatialExtentSuggestion.style.display = "none";
+            }
+          }
+          spatialExtentBanner.style.display = "flex";
+        } else {
+          spatialExtentBanner.style.display = "none";
+        }
+      }
+
+      // 2. Update Continuous Pipeline Sidebar Inline Alert
+      if (roiExtentAlert && roiExtentAlertText) {
+        if (activePipeline === "continuous" && (result.status === "outside" || result.status === "partial")) {
+          roiExtentAlert.className = `roi-coverage-alert ${result.status}`;
+          if (roiExtentAlertIcon) roiExtentAlertIcon.textContent = result.status === "outside" ? "⚠️" : "ℹ️";
+          roiExtentAlertText.innerHTML = `<strong>${result.title}</strong>${result.message}`;
+          roiExtentAlert.style.display = "flex";
+        } else {
+          roiExtentAlert.style.display = "none";
+        }
+      }
+
+      // 3. Update Discrete Pipeline Sidebar Inline Alert
+      if (activePipeline === "discrete") {
+        updateDiscreteCheckboxesAlert(roiBounds);
+      }
+
+      return result;
+    }
+
+    function updateDiscreteCheckboxesAlert(roiBounds) {
+      if (!glmCoverageAlert || !glmCoverageAlertText) return;
+      const checkedBoxes = Array.from(document.querySelectorAll('input[name="glm_datasets"]:checked'));
+      const previewRadio = document.querySelector('input[name="glm_preview_dataset"]:checked');
+
+      // Check preview dataset first
+      if (previewRadio && previewRadio.value && roiBounds) {
+        const previewRes = checkSpatialCoverage(roiBounds, previewRadio.value);
+        if (previewRes.status === "outside" || previewRes.status === "partial") {
+          glmCoverageAlert.className = `roi-coverage-alert ${previewRes.status}`;
+          if (glmCoverageAlertIcon) glmCoverageAlertIcon.textContent = previewRes.status === "outside" ? "⚠️" : "ℹ️";
+          glmCoverageAlertText.innerHTML = `<strong>Map Preview: ${previewRes.title}</strong>${previewRes.message}`;
+          glmCoverageAlert.style.display = "flex";
+          return;
+        }
+      }
+
+      if (checkedBoxes.length === 0 || !roiBounds) {
+        glmCoverageAlert.style.display = "none";
+        return;
+      }
+
+      const outsideDatasets = [];
+      const partialDatasets = [];
+
+      checkedBoxes.forEach(cb => {
+        const res = checkSpatialCoverage(roiBounds, cb.value);
+        if (res.status === "outside") outsideDatasets.push(cb.value.toUpperCase());
+        else if (res.status === "partial") partialDatasets.push(cb.value.toUpperCase());
+      });
+
+      if (outsideDatasets.length > 0) {
+        glmCoverageAlert.className = "roi-coverage-alert outside";
+        if (glmCoverageAlertIcon) glmCoverageAlertIcon.textContent = "⚠️";
+        glmCoverageAlertText.innerHTML = `<strong>Coverage Warning for Extraction:</strong> Uploaded coordinates fall outside ${outsideDatasets.join(", ")} coverage. Extraction will yield NaN / empty values for these layers.`;
+        glmCoverageAlert.style.display = "flex";
+      } else if (partialDatasets.length > 0) {
+        glmCoverageAlert.className = "roi-coverage-alert partial";
+        if (glmCoverageAlertIcon) glmCoverageAlertIcon.textContent = "ℹ️";
+        glmCoverageAlertText.innerHTML = `<strong>Partial Coverage Notice:</strong> Some points/polygons extend beyond the boundary of ${partialDatasets.join(", ")}.`;
+        glmCoverageAlert.style.display = "flex";
+      } else {
+        glmCoverageAlert.style.display = "none";
+      }
+    }
+
     function handleROISelection(e) {
       if (e.target.value) {
         selectedROIs.add(e.target.value);
         e.target.value = ""; // Reset dropdown
         renderROITags();
         zoomToSelectedROIs();
+        updateSpatialCoverageAlerts();
         triggerMapUpdate();
       }
     }
+
+    // -------------------------------------------------------------------------
+    // Searchable Country Combobox with Alias Matching & Keyboard Navigation
+    // -------------------------------------------------------------------------
+    const countryComboboxWrapper = document.getElementById("country_combobox_wrapper");
+    const countrySearchInput = document.getElementById("map_country_search");
+    const countryDropdownBtn = document.getElementById("map_country_dropdown_btn");
+    const countryDropdownMenu = document.getElementById("country_dropdown_menu");
+    const countryDropdownList = document.getElementById("country_dropdown_list");
+
+    const allCountryList = Object.keys(countryBounds).sort((a, b) => a.localeCompare(b));
+    let highlightedCountryIndex = -1;
+    let currentFilteredCountries = [];
+
+    const COUNTRY_ALIASES = {
+      "uk": "United Kingdom",
+      "great britain": "United Kingdom",
+      "britain": "United Kingdom",
+      "england": "United Kingdom",
+      "scotland": "United Kingdom",
+      "wales": "United Kingdom",
+      "usa": "United States",
+      "us": "United States",
+      "america": "United States",
+      "united states of america": "United States",
+      "drc": "Dem Rep of the Congo",
+      "dr congo": "Dem Rep of the Congo",
+      "democratic republic of the congo": "Dem Rep of the Congo",
+      "congo drc": "Dem Rep of the Congo",
+      "congo brazzaville": "Rep of the Congo",
+      "republic of the congo": "Rep of the Congo",
+      "uae": "United Arab Emirates",
+      "emirates": "United Arab Emirates",
+      "car": "Central African Rep",
+      "central african republic": "Central African Rep",
+      "south korea": "Korea, South",
+      "north korea": "Korea, North",
+      "russia": "Russia",
+      "russian federation": "Russia",
+      "ivory coast": "Cote d'Ivoire",
+      "cape verde": "Cabo Verde",
+      "eswatini": "Swaziland",
+      "tanzania": "Tanzania",
+      "syria": "Syria",
+      "laos": "Laos",
+      "vietnam": "Vietnam",
+      "iran": "Iran",
+      "bolivia": "Bolivia",
+      "venezuela": "Venezuela"
+    };
+
+    function escapeHtmlString(text) {
+      if (!text) return "";
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function renderCountryDropdown(searchTerm = "") {
+      if (!countryDropdownList) return;
+      const cleanTerm = searchTerm.trim().toLowerCase();
+      
+      let matches = [];
+      const exactAlias = COUNTRY_ALIASES[cleanTerm];
+      
+      if (cleanTerm === "") {
+        matches = [...allCountryList];
+      } else {
+        if (exactAlias && allCountryList.includes(exactAlias)) {
+          matches.push(exactAlias);
+        }
+        
+        const prefixMatches = allCountryList.filter(c => c.toLowerCase().startsWith(cleanTerm) && c !== exactAlias);
+        const substringMatches = allCountryList.filter(c => !c.toLowerCase().startsWith(cleanTerm) && c.toLowerCase().includes(cleanTerm) && c !== exactAlias);
+        
+        matches = [...matches, ...prefixMatches, ...substringMatches];
+      }
+
+      currentFilteredCountries = matches;
+      countryDropdownList.innerHTML = "";
+
+      if (matches.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "combobox-empty";
+        emptyDiv.textContent = `No countries matching "${searchTerm}"`;
+        countryDropdownList.appendChild(emptyDiv);
+        highlightedCountryIndex = -1;
+        return;
+      }
+
+      matches.forEach((country, idx) => {
+        const opt = document.createElement("div");
+        opt.className = "combobox-option";
+        opt.dataset.index = idx;
+        opt.dataset.country = country;
+
+        const isSelected = selectedROIs.has(country);
+
+        let labelHtml = escapeHtmlString(country);
+        if (cleanTerm) {
+          const matchPos = country.toLowerCase().indexOf(cleanTerm);
+          if (matchPos !== -1) {
+            const before = escapeHtmlString(country.substring(0, matchPos));
+            const hit = escapeHtmlString(country.substring(matchPos, matchPos + cleanTerm.length));
+            const after = escapeHtmlString(country.substring(matchPos + cleanTerm.length));
+            labelHtml = `${before}<mark>${hit}</mark>${after}`;
+          }
+        }
+
+        opt.innerHTML = `
+          <span>${labelHtml}</span>
+          ${isSelected ? '<span style="font-size:0.75rem; color:#58a6ff; font-weight:600;">✓ Added</span>' : ''}
+        `;
+
+        opt.addEventListener("click", () => {
+          selectCountry(country);
+        });
+
+        opt.addEventListener("mouseenter", () => {
+          setHighlightedIndex(idx, false);
+        });
+
+        countryDropdownList.appendChild(opt);
+      });
+
+      setHighlightedIndex(0, false);
+    }
+
+    function setHighlightedIndex(index, scrollIntoView = true) {
+      const options = countryDropdownList?.querySelectorAll(".combobox-option") || [];
+      options.forEach(opt => opt.classList.remove("highlighted"));
+      
+      if (index >= 0 && index < options.length) {
+        highlightedCountryIndex = index;
+        const target = options[index];
+        target.classList.add("highlighted");
+        if (scrollIntoView && countryDropdownMenu) {
+          target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }
+      } else {
+        highlightedCountryIndex = -1;
+      }
+    }
+
+    function showCountryDropdown() {
+      if (countryDropdownMenu) {
+        countryDropdownMenu.style.display = "block";
+      }
+    }
+
+    function hideCountryDropdown() {
+      if (countryDropdownMenu) {
+        countryDropdownMenu.style.display = "none";
+      }
+      highlightedCountryIndex = -1;
+    }
+
+    function selectCountry(countryName) {
+      if (!countryName) return;
+      selectedROIs.add(countryName);
+      if (countrySearchInput) countrySearchInput.value = "";
+      hideCountryDropdown();
+      renderROITags();
+      zoomToSelectedROIs();
+      updateSpatialCoverageAlerts();
+      triggerMapUpdate();
+    }
+
+    if (countrySearchInput) {
+      countrySearchInput.addEventListener("focus", () => {
+        renderCountryDropdown(countrySearchInput.value);
+        showCountryDropdown();
+      });
+
+      countrySearchInput.addEventListener("input", (e) => {
+        showCountryDropdown();
+        renderCountryDropdown(e.target.value);
+      });
+
+      countrySearchInput.addEventListener("keydown", (e) => {
+        if (countryDropdownMenu && countryDropdownMenu.style.display === "none") {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            showCountryDropdown();
+            renderCountryDropdown(countrySearchInput.value);
+            return;
+          }
+        }
+
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          const next = highlightedCountryIndex + 1;
+          if (next < currentFilteredCountries.length) {
+            setHighlightedIndex(next, true);
+          }
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          const prev = highlightedCountryIndex - 1;
+          if (prev >= 0) {
+            setHighlightedIndex(prev, true);
+          }
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          if (highlightedCountryIndex >= 0 && currentFilteredCountries[highlightedCountryIndex]) {
+            selectCountry(currentFilteredCountries[highlightedCountryIndex]);
+          } else if (currentFilteredCountries.length > 0) {
+            selectCountry(currentFilteredCountries[0]);
+          }
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          hideCountryDropdown();
+        }
+      });
+    }
+
+    if (countryDropdownBtn) {
+      countryDropdownBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (countryDropdownMenu && countryDropdownMenu.style.display === "block") {
+          hideCountryDropdown();
+        } else {
+          renderCountryDropdown(countrySearchInput ? countrySearchInput.value : "");
+          showCountryDropdown();
+          if (countrySearchInput) countrySearchInput.focus();
+        }
+      });
+    }
+
+    document.addEventListener("click", (e) => {
+      if (countryComboboxWrapper && !countryComboboxWrapper.contains(e.target)) {
+        hideCountryDropdown();
+      }
+    });
 
     // ROI Toggle Logic
     const roiRadios = document.querySelectorAll('input[name="roi_type"]');
@@ -1556,6 +2092,7 @@ document.addEventListener("DOMContentLoaded", () => {
       radio.addEventListener("change", (e) => {
         selectedROIs.clear();
         renderROITags();
+        if (countrySearchInput) countrySearchInput.value = "";
         countryInput.value = "";
         regionInput.value = "";
         
@@ -1565,7 +2102,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if (uploadedMarkersLayer) map.removeLayer(uploadedMarkersLayer);
         
         const mapUploadPanel = document.getElementById("map_upload_panel");
-        
         const drawGuidance = document.getElementById("map_draw_guidance");
 
         // Clear drawing states
@@ -1578,18 +2114,21 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         
         if (e.target.value === "country") {
-          countryInput.style.display = "block";
+          if (countryComboboxWrapper) countryComboboxWrapper.style.display = "block";
+          countryInput.style.display = "none";
           regionInput.style.display = "none";
           mapUploadPanel.style.display = "none";
-          countryInput.required = selectedROIs.size === 0;
+          countryInput.required = false;
           regionInput.required = false;
         } else if (e.target.value === "region") {
+          if (countryComboboxWrapper) countryComboboxWrapper.style.display = "none";
           countryInput.style.display = "none";
           regionInput.style.display = "block";
           mapUploadPanel.style.display = "none";
           countryInput.required = false;
           regionInput.required = selectedROIs.size === 0;
         } else if (e.target.value === "bbox_upload") {
+          if (countryComboboxWrapper) countryComboboxWrapper.style.display = "none";
           countryInput.style.display = "none";
           regionInput.style.display = "none";
           mapUploadPanel.style.display = "flex";
@@ -1601,6 +2140,7 @@ document.addEventListener("DOMContentLoaded", () => {
             renderUploadedDataOnMap(map, uploadedPoints, swap);
           }
         } else if (e.target.value === "bbox_draw") {
+          if (countryComboboxWrapper) countryComboboxWrapper.style.display = "none";
           countryInput.style.display = "none";
           regionInput.style.display = "none";
           mapUploadPanel.style.display = "none";
@@ -1615,8 +2155,21 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
-    // Reactive Map Update Logic
+    // Reactive Map Update Logic with AbortController & Request Sequence Counter
+    let activeMapRequestId = 0;
+    let activeMapAbortController = null;
+
     async function triggerMapUpdate() {
+      // 1. Cancel previous pending in-flight request to eliminate race conditions & stale errors
+      if (activeMapAbortController) {
+        activeMapAbortController.abort();
+        activeMapAbortController = null;
+      }
+
+      const requestId = ++activeMapRequestId;
+      const abortController = new AbortController();
+      activeMapAbortController = abortController;
+
       if (mapErrorOverlay) mapErrorOverlay.style.display = "none";
       
       let dataset, startDate, endDate, roiType, roiNames, isBBox = false;
@@ -1629,6 +2182,7 @@ document.addEventListener("DOMContentLoaded", () => {
         customAsset = mapCustomAssetInput.value.trim();
 
         if (isCustom && (!customAsset || !mapCustomBandSelect.value)) {
+          if (mapLoadingOverlay) mapLoadingOverlay.style.display = "none";
           return; // Don't trigger map update until custom ID loaded
         }
 
@@ -1640,7 +2194,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Update form required state based on selections
         if (roiType === "country") {
-          countryInput.required = selectedROIs.size === 0;
+          countryInput.required = false;
         } else if (roiType === "region") {
           regionInput.required = selectedROIs.size === 0;
         } else {
@@ -1648,11 +2202,24 @@ document.addEventListener("DOMContentLoaded", () => {
           regionInput.required = false;
         }
 
+        // Check spatial coverage before requesting GEE tiles
+        const spatialCheck = updateSpatialCoverageAlerts();
+        if (spatialCheck.status === "outside") {
+          console.warn("[PhyloCov Map] Requested ROI is completely outside dataset coverage. Skipping tile fetch:", spatialCheck);
+          if (currentEELayer) {
+            map.removeLayer(currentEELayer);
+            currentEELayer = null;
+          }
+          if (mapLoadingOverlay) mapLoadingOverlay.style.display = "none";
+          return; // Stop here! Prevents waiting on blank transparent tiles!
+        }
+
         if (!dataset || (!isCustom && (!startDate || !endDate)) || (!isBBox && selectedROIs.size === 0) || (isBBox && !currentCustomBBox)) {
           if (currentEELayer) {
             map.removeLayer(currentEELayer);
             currentEELayer = null;
           }
+          if (mapLoadingOverlay) mapLoadingOverlay.style.display = "none";
           return; // Wait until all required fields are filled
         }
 
@@ -1669,6 +2236,7 @@ document.addEventListener("DOMContentLoaded", () => {
             map.removeLayer(currentEELayer);
             currentEELayer = null;
           }
+          if (mapLoadingOverlay) mapLoadingOverlay.style.display = "none";
           return;
         }
 
@@ -1691,6 +2259,7 @@ document.addEventListener("DOMContentLoaded", () => {
             map.removeLayer(currentEELayer);
             currentEELayer = null;
           }
+          if (mapLoadingOverlay) mapLoadingOverlay.style.display = "none";
           return;
         }
 
@@ -1698,14 +2267,31 @@ document.addEventListener("DOMContentLoaded", () => {
           roiType = "bbox";
           roiNames = `${glmPointsBBox.minLat},${glmPointsBBox.minLon},${glmPointsBBox.maxLat},${glmPointsBBox.maxLon}`;
           isBBox = true;
+        } else if (glmBoundaryBBox) {
+          roiType = "bbox";
+          roiNames = `${glmBoundaryBBox.minLat},${glmBoundaryBBox.minLon},${glmBoundaryBBox.maxLat},${glmBoundaryBBox.maxLon}`;
+          isBBox = true;
         } else {
           roiType = "";
           roiNames = "";
           isBBox = false;
         }
+
+        // Check spatial coverage in Discrete Pipeline
+        const discreteSpatialCheck = updateSpatialCoverageAlerts();
+        if (discreteSpatialCheck.status === "outside") {
+          console.warn("[PhyloCov Map] Discrete preview coordinates are completely outside dataset coverage:", discreteSpatialCheck);
+          if (currentEELayer) {
+            map.removeLayer(currentEELayer);
+            currentEELayer = null;
+          }
+          if (mapLoadingOverlay) mapLoadingOverlay.style.display = "none";
+          return;
+        }
       }
 
       console.log("[PhyloCov Map Debug] triggerMapUpdate running:", {
+        requestId,
         activePipeline,
         dataset,
         startDate,
@@ -1720,7 +2306,7 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const queryRoiType = isBBox ? "bbox" : roiType;
         let queryUrl = `${BACKEND_URL}/map?dataset=${encodeURIComponent(isCustom ? customAsset : dataset)}&start_date=${startDate}&end_date=${endDate}&roi_type=${queryRoiType}&roi_names=${encodeURIComponent(roiNames)}`;
-        console.log("[PhyloCov Map Debug] Fetching map layer URL:", queryUrl);
+        console.log(`[PhyloCov Map Debug] Fetching map layer URL (Request #${requestId}):`, queryUrl);
         
         if (isCustom) {
           const band = mapCustomBandSelect.value;
@@ -1742,11 +2328,19 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         }
 
-        const response = await fetch(queryUrl);
+        const response = await fetch(queryUrl, { signal: abortController.signal });
         const data = await response.json();
-        console.log("[PhyloCov Map Debug] Map layer response received:", data);
+
+        // Stale response check: discard if newer request has taken over
+        if (requestId !== activeMapRequestId) {
+          console.log(`[PhyloCov Map] Discarding stale response for request #${requestId}`);
+          return;
+        }
 
         if (!response.ok) throw new Error(data.detail || "Failed to load map tiles");
+
+        // Clear any previous error overlay upon successful tile retrieval
+        if (mapErrorOverlay) mapErrorOverlay.style.display = "none";
 
         // Remove old EE layer if exists
         if (currentEELayer) {
@@ -1767,17 +2361,27 @@ document.addEventListener("DOMContentLoaded", () => {
           });
         }
       } catch (error) {
+        if (error.name === "AbortError") {
+          console.log(`[PhyloCov Map] Request #${requestId} was aborted by newer request.`);
+          return;
+        }
+        if (requestId !== activeMapRequestId) {
+          console.log(`[PhyloCov Map] Ignoring stale error from request #${requestId}:`, error);
+          return;
+        }
         console.error("Map Update Error:", error);
         if (mapErrorOverlay && mapErrorText) {
           mapErrorText.textContent = error.message;
           mapErrorOverlay.style.display = "flex";
         }
       } finally {
-        if (mapLoadingOverlay) mapLoadingOverlay.style.display = "none";
+        if (requestId === activeMapRequestId && mapLoadingOverlay) {
+          mapLoadingOverlay.style.display = "none";
+        }
       }
     }
 
-    [datasetSelect, startDateInput, endDateInput,
+    [startDateInput, endDateInput,
      mapCustomBandSelect,
      document.getElementById("map_custom_reducer"),
      document.getElementById("map_custom_multiplier"),
@@ -1790,8 +2394,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (countryInput) countryInput.addEventListener("change", handleROISelection);
     if (regionInput) regionInput.addEventListener("change", handleROISelection);
     
-    // Initial required state setup
-    countryInput.required = true;
+    // Initial required state setup (countryInput is hidden by searchable combobox)
+    countryInput.required = false;
 
     // Handle Map Interface Export
     const mapForm = document.getElementById("nativeMapForm");
@@ -1877,6 +2481,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const roiType = document.querySelector('input[name="roi_type"]:checked').value;
         const isBBox = (roiType === "bbox_upload" || roiType === "bbox_draw");
+
+        // Spatial extent pre-export guard
+        const spatialCheck = updateSpatialCoverageAlerts();
+        if (spatialCheck.status === "outside") {
+          mapStatusText.textContent = "BLOCKED";
+          mapStatusMessage.textContent = `Export blocked: ${spatialCheck.message}`;
+          mapStatusDot.style.backgroundColor = "#f85149";
+          mapExportStatus.style.display = "block";
+          mapExportBtn.disabled = false;
+          mapExportBtn.textContent = "Start Backend Export";
+          if (mapTimerInterval) clearInterval(mapTimerInterval);
+          mapTimer.style.display = "none";
+          return;
+        }
+
         let roiNamesList = [];
         if (isBBox) {
           if (!currentCustomBBox) {
@@ -2283,10 +2902,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const bounds = glmUploadedGeoJsonLayer.getBounds();
         if (bounds && bounds.isValid()) {
+          glmBoundaryBBox = {
+            minLat: bounds.getSouth(),
+            minLon: bounds.getWest(),
+            maxLat: bounds.getNorth(),
+            maxLon: bounds.getEast()
+          };
           map.fitBounds(bounds, {
             ...getMapPadding(40),
             maxZoom: 10
           });
+          updateSpatialCoverageAlerts();
         }
       }
 
@@ -2874,6 +3500,23 @@ document.addEventListener("DOMContentLoaded", () => {
           const checkedDatasets = getSelectedGLMDatasets();
           if (checkedDatasets.length === 0) return;
 
+          // Check if all selected datasets are completely disjoint from sample coordinates
+          const roiBounds = getActiveROIBounds();
+          if (roiBounds) {
+            const allOutside = checkedDatasets.every(d => checkSpatialCoverage(roiBounds, d).status === "outside");
+            if (allOutside) {
+              glmStatusPanel.style.display = "block";
+              glmStatusDot.style.backgroundColor = "#f85149";
+              glmStatusText.textContent = "BLOCKED";
+              glmStatusMessage.textContent = `Extraction blocked: The selected dataset(s) (${checkedDatasets.map(d => d.toUpperCase()).join(", ")}) fall completely outside the uploaded sample extent. Please select a dataset with coverage for this region (e.g. ERA5).`;
+              glmSubmitBtn.disabled = false;
+              glmSubmitBtn.textContent = "Extract Covariates";
+              glmSubmitBtn.style.opacity = "1";
+              glmSubmitBtn.style.cursor = "pointer";
+              return;
+            }
+          }
+
           // Prepare UI for loading
           glmSubmitBtn.disabled = true;
           glmSubmitBtn.textContent = `Extracting ${checkedDatasets.length} Layer${checkedDatasets.length > 1 ? 's' : ''}...`;
@@ -3026,6 +3669,734 @@ document.addEventListener("DOMContentLoaded", () => {
           });
         });
       }
+
+      // =========================================================================
+      // Reproducibility & Script Export Generator
+      // =========================================================================
+      const codeExportModal = document.getElementById("codeExportModal");
+      const closeCodeExportBtn = document.getElementById("closeCodeExportBtn");
+      const codeExportPipelineSubtitle = document.getElementById("codeExportPipelineSubtitle");
+      const codeEditorFilename = document.getElementById("codeEditorFilename");
+      const codeEditorConfigBadge = document.getElementById("codeEditorConfigBadge");
+      const codeExportPre = document.getElementById("codeExportPre");
+      const copyCodeBtn = document.getElementById("copyCodeBtn");
+      const copyCodeBtnText = document.getElementById("copyCodeBtnText");
+      const downloadCodeBtn = document.getElementById("downloadCodeBtn");
+      const downloadCodeBtnText = document.getElementById("downloadCodeBtnText");
+      const langTabs = document.querySelectorAll(".code-lang-tab");
+
+      const navOpenCodeBtn = document.getElementById("navOpenCodeBtn");
+      const mapInspectCodeBtn = document.getElementById("mapInspectCodeBtn");
+      const glmInspectCodeBtn = document.getElementById("glmInspectCodeBtn");
+
+      let currentCodeModalPipeline = "continuous"; // "continuous" or "discrete"
+      let currentCodeModalLang = "python"; // "python", "r", or "javascript"
+      let currentRawCode = "";
+
+      const PRESETS = {
+        chirps: {
+          asset: "UCSB-CHG/CHIRPS/DAILY",
+          band: "precipitation",
+          reducer: "mean",
+          multiplier: 1.0,
+          offset: 0.0,
+          palette: ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494'],
+          vis_min: 0.0,
+          vis_max: 50.0
+        },
+        era5: {
+          asset: "ECMWF/ERA5/DAILY",
+          band: "mean_2m_air_temperature",
+          reducer: "mean",
+          multiplier: 1.0,
+          offset: -273.15,
+          palette: ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026'],
+          vis_min: 0.0,
+          vis_max: 40.0
+        },
+        era5_land_monthly: {
+          asset: "ECMWF/ERA5_LAND/MONTHLY_AGGR",
+          band: "temperature_2m",
+          reducer: "mean",
+          multiplier: 1.0,
+          offset: -273.15,
+          palette: ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026'],
+          vis_min: 0.0,
+          vis_max: 40.0
+        },
+        modis_lst_day: {
+          asset: "MODIS/061/MOD21C3",
+          band: "LST_Day",
+          reducer: "mean",
+          multiplier: 1.0,
+          offset: -273.15,
+          palette: ['#313695', '#4575b4', '#74add1', '#ffffbf', '#fee090', '#f46d43', '#a50026'],
+          vis_min: 0.0,
+          vis_max: 40.0
+        },
+        modis_lst_night: {
+          asset: "MODIS/061/MOD21C3",
+          band: "LST_Night",
+          reducer: "mean",
+          multiplier: 1.0,
+          offset: -273.15,
+          palette: ['#053061', '#2166ac', '#4393c3', '#f7f7f7', '#fddbc7', '#d6604f', '#b2182b'],
+          vis_min: -10.0,
+          vis_max: 25.0
+        },
+        modis_ndvi: {
+          asset: "MODIS/061/MOD13Q1",
+          band: "NDVI",
+          reducer: "mean",
+          multiplier: 0.0001,
+          offset: 0.0,
+          palette: ['#FFFFFF', '#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400', '#3E8601', '#207401', '#056201', '#004C00', '#023B01', '#012E01', '#011D01', '#011301'],
+          vis_min: 0.0,
+          vis_max: 1.0
+        },
+        srtm: {
+          asset: "USGS/SRTMGL1_003",
+          band: "elevation",
+          reducer: "none",
+          multiplier: 1.0,
+          offset: 0.0,
+          palette: ['#000000', '#478FCD', '#86C58E', '#AFC35E', '#8F7131', '#B78D4C', '#E2B8A6', '#FFFFFF'],
+          vis_min: 0.0,
+          vis_max: 3000.0
+        }
+      };
+
+      function getActiveROIForScript() {
+        const roiType = document.querySelector('input[name="roi_type"]:checked')?.value || "country";
+        let minLat = 90, minLon = 180, maxLat = -90, maxLon = -180;
+        let hasCoords = false;
+        let label = "";
+
+        if (roiType === "country" || roiType === "region") {
+          if (selectedROIs.size > 0) {
+            label = Array.from(selectedROIs).join(", ");
+            selectedROIs.forEach(name => {
+              let b = null;
+              if (roiType === "country" && countryBounds[name]) {
+                b = countryBounds[name];
+                minLat = Math.min(minLat, b[0]);
+                minLon = Math.min(minLon, b[1]);
+                maxLat = Math.max(maxLat, b[2]);
+                maxLon = Math.max(maxLon, b[3]);
+                hasCoords = true;
+              } else if (roiType === "region" && CONTINENT_BOUNDS[name]) {
+                const cb = CONTINENT_BOUNDS[name];
+                minLat = Math.min(minLat, cb[0][0]);
+                minLon = Math.min(minLon, cb[0][1]);
+                maxLat = Math.max(maxLat, cb[1][0]);
+                maxLon = Math.max(maxLon, cb[1][1]);
+                hasCoords = true;
+              }
+            });
+          }
+        } else if ((roiType === "bbox_upload" || roiType === "bbox_draw") && currentCustomBBox) {
+          minLat = currentCustomBBox.minLat;
+          minLon = currentCustomBBox.minLon;
+          maxLat = currentCustomBBox.maxLat;
+          maxLon = currentCustomBBox.maxLon;
+          hasCoords = true;
+          label = currentCustomBBox.label || "Custom Bounding Box";
+        }
+
+        if (!hasCoords) {
+          minLat = 55.336; minLon = 11.094; maxLat = 69.060; maxLon = 24.152;
+          label = "Sweden (Sample ROI)";
+        }
+
+        return { minLat, minLon, maxLat, maxLon, label };
+      }
+
+      function generateContinuousScript(lang) {
+        const roi = getActiveROIForScript();
+        const isCustom = datasetSelect?.value === "custom";
+        const datasetKey = isCustom ? (mapCustomAssetInput?.value?.trim() || "users/username/my_asset") : (datasetSelect?.value || "chirps");
+        const meta = PRESETS[datasetKey] || {};
+        const assetId = isCustom ? datasetKey : (meta.asset || "UCSB-CHG/CHIRPS/DAILY");
+        const band = isCustom ? (mapCustomBandSelect?.value || "band1") : (meta.band || "precipitation");
+        const reducer = isCustom ? (document.getElementById("map_custom_reducer")?.value || "mean") : (meta.reducer === "none" ? "first" : (meta.reducer || "mean"));
+        const multiplier = isCustom ? (parseFloat(document.getElementById("map_custom_multiplier")?.value) || 1.0) : (meta.multiplier ?? 1.0);
+        const offset = isCustom ? (parseFloat(document.getElementById("map_custom_offset")?.value) || 0.0) : (meta.offset ?? 0.0);
+        const startDate = startDateInput?.value || "2020-01-01";
+        const endDate = endDateInput?.value || "2020-01-31";
+        const scale = parseInt(mapScaleSelect?.value === "custom" ? mapScaleCustom?.value : mapScaleSelect?.value, 10) || 5000;
+        const isStatic = datasetKey === "srtm";
+        const nowIso = new Date().toISOString().split("T")[0];
+
+        if (lang === "python") {
+          return `"""
+PhyloCov Explorer - Reproducible Earth Engine Pipeline Script
+Pipeline: Continuous Covariate Composite (GeoTIFF)
+Dataset: ${datasetKey.toUpperCase()} (${assetId})
+Band: ${band} | Reducer: ${reducer} | Scale: ${scale}m
+Region of Interest: ${roi.label}
+Generated: ${nowIso}
+"""
+
+import ee
+
+# 1. Initialize Google Earth Engine
+try:
+    ee.Initialize()
+except Exception:
+    ee.Authenticate()
+    ee.Initialize()
+
+# 2. Define Region of Interest (BBox: [minLon, minLat, maxLon, maxLat])
+roi = ee.Geometry.BBox(${roi.minLon.toFixed(4)}, ${roi.minLat.toFixed(4)}, ${roi.maxLon.toFixed(4)}, ${roi.maxLat.toFixed(4)})
+
+# 3. Load Dataset & Filter
+${isStatic ? `# Static Topography Dataset
+raw_image = ee.Image('${assetId}').select('${band}').clip(roi)` : `# Filter ImageCollection by Date Range & Spatial Extent
+collection = (
+    ee.ImageCollection('${assetId}')
+    .filterDate('${startDate}', '${endDate}')
+    .filterBounds(roi)
+    .select('${band}')
+)
+
+# 4. Temporal Reduction (${reducer})
+raw_image = collection.${reducer}().clip(roi)`}
+
+${multiplier !== 1.0 || offset !== 0.0 ? `# 5. Apply Calibration / Scale & Offset: (raw * ${multiplier}) + (${offset})
+composite = raw_image.multiply(${multiplier}).add(${offset})` : `# 5. Processed Composite
+composite = raw_image`}
+
+# 6. Submit GeoTIFF Export Task to Google Drive
+task = ee.batch.Export.image.toDrive(
+    image=composite,
+    description='PhyloCov_${datasetKey}_${startDate}_${endDate}',
+    folder='PhyloCov_Exports',
+    fileNamePrefix='PhyloCov_${datasetKey}_${startDate}_${endDate}',
+    scale=${scale},
+    region=roi,
+    maxPixels=1e13,
+    fileFormat='GeoTIFF'
+)
+
+task.start()
+print(f"Export task submitted! Task ID: {task.id}")
+print("Monitor progress at: https://code.earthengine.google.com/tasks")
+`;
+        } else if (lang === "r") {
+          return `# ==============================================================================
+# PhyloCov Explorer - Reproducible Earth Engine Pipeline Script
+# Pipeline: Continuous Covariate Composite (GeoTIFF)
+# Dataset: ${datasetKey.toUpperCase()} (${assetId})
+# Band: ${band} | Reducer: ${reducer} | Scale: ${scale}m
+# Region of Interest: ${roi.label}
+# Generated: ${nowIso}
+# ==============================================================================
+
+library(rgee)
+library(terra)
+
+# 1. Initialize Earth Engine in R
+ee_Initialize(drive = TRUE)
+
+# 2. Define Region of Interest (BBox: minLon, minLat, maxLon, maxLat)
+roi <- ee$Geometry$BBox(${roi.minLon.toFixed(4)}, ${roi.minLat.toFixed(4)}, ${roi.maxLon.toFixed(4)}, ${roi.maxLat.toFixed(4)})
+
+# 3. Load Dataset & Filter
+${isStatic ? `# Static Elevation/Topography Layer
+raw_image <- ee$Image('${assetId}')$select('${band}')$clip(roi)` : `# Filter ImageCollection by Date Range & Spatial Bounds
+collection <- ee$ImageCollection('${assetId}')$
+  filterDate('${startDate}', '${endDate}')$
+  filterBounds(roi)$
+  select('${band}')
+
+# 4. Temporal Reduction (${reducer})
+raw_image <- collection$${reducer}()$clip(roi)`}
+
+${multiplier !== 1.0 || offset !== 0.0 ? `# 5. Apply Calibration (Multiplier: ${multiplier}, Offset: ${offset})
+composite <- raw_image$multiply(${multiplier})$add(${offset})` : `# 5. Final Composite
+composite <- raw_image`}
+
+# 6. Export to Google Drive as GeoTIFF
+task <- ee_image_to_drive(
+  image = composite,
+  description = 'PhyloCov_${datasetKey}_${startDate}_${endDate}',
+  folder = 'PhyloCov_Exports',
+  fileNamePrefix = 'PhyloCov_${datasetKey}_${startDate}_${endDate}',
+  scale = ${scale},
+  region = roi,
+  maxPixels = 1e13,
+  fileFormat = 'GeoTIFF'
+)
+
+task$start()
+message("Export task submitted! Check progress with: ee_monitoring(task)")
+`;
+        } else {
+          // JavaScript (GEE Code Editor)
+          return `/**
+ * PhyloCov Explorer - Reproducible Earth Engine Pipeline Script
+ * Pipeline: Continuous Covariate Composite (GeoTIFF)
+ * Dataset: ${datasetKey.toUpperCase()} (${assetId})
+ * Band: ${band} | Reducer: ${reducer} | Scale: ${scale}m
+ * Region of Interest: ${roi.label}
+ * 
+ * Paste directly into Google Earth Engine Code Editor:
+ * https://code.earthengine.google.com
+ */
+
+// 1. Define Region of Interest (Bounding Box)
+var roi = ee.Geometry.BBox(${roi.minLon.toFixed(4)}, ${roi.minLat.toFixed(4)}, ${roi.maxLon.toFixed(4)}, ${roi.maxLat.toFixed(4)});
+
+// 2. Load Dataset
+${isStatic ? `// Static Elevation / Topography
+var composite = ee.Image('${assetId}')
+  .select('${band}')
+  .clip(roi);` : `// Filter ImageCollection & Reduce
+var collection = ee.ImageCollection('${assetId}')
+  .filterDate('${startDate}', '${endDate}')
+  .filterBounds(roi)
+  .select('${band}');
+
+// 3. Temporal Reduction
+var composite = collection.${reducer}()${multiplier !== 1.0 ? `\n  .multiply(${multiplier})` : ""}${offset !== 0.0 ? `\n  .add(${offset})` : ""}
+  .clip(roi);`}
+
+// 4. Visualize on Interactive Map
+Map.centerObject(roi, 6);
+Map.addLayer(composite, {
+  min: ${meta.vis_min ?? 0},
+  max: ${meta.vis_max ?? 50},
+  palette: ${JSON.stringify(meta.palette || ['#ffffcc', '#41b6c4', '#253494'])}
+}, 'PhyloCov ${datasetKey.toUpperCase()} Composite');
+
+// 5. Submit GeoTIFF Export to Google Drive
+Export.image.toDrive({
+  image: composite,
+  description: 'PhyloCov_${datasetKey}_${startDate}_${endDate}',
+  folder: 'PhyloCov_Exports',
+  fileNamePrefix: 'PhyloCov_${datasetKey}_${startDate}_${endDate}',
+  scale: ${scale},
+  region: roi,
+  maxPixels: 1e13,
+  fileFormat: 'GeoTIFF'
+});
+`;
+        }
+      }
+
+      function generateDiscreteScript(lang) {
+        const checkedInputs = Array.from(document.querySelectorAll("#glmDatasetsList input[type='checkbox']:checked"));
+        const checkedDatasets = checkedInputs.map(el => el.value);
+        if (checkedDatasets.length === 0) checkedDatasets.push("chirps");
+
+        const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
+        const startDate = document.getElementById("glm_start_date")?.value || "2020-01-01";
+        const endDate = document.getElementById("glm_end_date")?.value || "2020-12-31";
+        const scale = parseInt(document.getElementById("glm_scale_select")?.value, 10) || 5000;
+        const zonalStat = document.getElementById("glm_zonal_stat_select")?.value || document.getElementById("glm_aggregation_select")?.value || "mean";
+        const nowIso = new Date().toISOString().split("T")[0];
+
+        if (lang === "python") {
+          return `"""
+PhyloCov Explorer - Reproducible Earth Engine Pipeline Script
+Pipeline: Discrete Covariate Extraction for GLM / Phylogeography
+Layers: ${checkedDatasets.join(", ")}
+Date Mode: ${dateMode.toUpperCase()} (${startDate} to ${endDate})
+Scale: ${scale}m | Aggregation: ${zonalStat}
+Generated: ${nowIso}
+"""
+
+import ee
+import pandas as pd
+
+# 1. Initialize Google Earth Engine
+try:
+    ee.Initialize()
+except Exception:
+    ee.Authenticate()
+    ee.Initialize()
+
+# 2. Define Sample Points / Polygons
+# Example points (Replace with your uploaded CSV coordinates or GEE FeatureCollection)
+sample_points = [
+    {"id": "Sample_01", "lon": 18.4241, "lat": -33.9249, "date": "${startDate}"},
+    {"id": "Sample_02", "lon": 28.0473, "lat": -26.2041, "date": "${startDate}"},
+    {"id": "Sample_03", "lon": 31.0218, "lat": -29.8587, "date": "${startDate}"}
+]
+
+features = [
+    ee.Feature(ee.Geometry.Point([p["lon"], p["lat"]]), {
+        "sample_id": p["id"],
+        "sample_date": p["date"]
+    }) for p in sample_points
+]
+points = ee.FeatureCollection(features)
+
+# 3. Prepare Covariate Layers
+layer_images = []
+
+${checkedDatasets.map(d => {
+  const p = PRESETS[d] || {};
+  if (d === "srtm") {
+    return `# Topography (SRTM)
+srtm_img = ee.Image('${p.asset || "USGS/SRTMGL1_003"}').select(['elevation'], ['srtm_elevation'])
+layer_images.append(srtm_img)`;
+  }
+  return `# ${d.toUpperCase()} Composite
+${d}_col = ee.ImageCollection('${p.asset || "UCSB-CHG/CHIRPS/DAILY"}').filterDate('${startDate}', '${endDate}').select(['${p.band || "precipitation"}'])
+${d}_img = ${d}_col.${p.reducer || "mean"}()${p.multiplier && p.multiplier !== 1 ? `.multiply(${p.multiplier})` : ""}${p.offset ? `.add(${p.offset})` : ""}.rename('${d}_${p.band || "val"}')
+layer_images.append(${d}_img)`;
+}).join("\n\n")}
+
+# Combine all layers into a single multi-band image
+stacked_covariates = ee.Image.cat(layer_images)
+
+# 4. Extract Covariates at Sample Locations
+extracted_data = stacked_covariates.reduceRegions(
+    collection=points,
+    reducer=ee.Reducer.${zonalStat}(),
+    scale=${scale}
+)
+
+# 5. Export Extracted Attributes to Google Drive as CSV
+task = ee.batch.Export.table.toDrive(
+    collection=extracted_data,
+    description='PhyloCov_Discrete_Covariates',
+    folder='PhyloCov_Exports',
+    fileNamePrefix='phylocov_discrete_covariates',
+    fileFormat='CSV'
+)
+
+task.start()
+print(f"Extraction task submitted! Task ID: {task.id}")
+print("Monitor progress at: https://code.earthengine.google.com/tasks")
+`;
+        } else if (lang === "r") {
+          return `# ==============================================================================
+# PhyloCov Explorer - Reproducible Earth Engine Pipeline Script
+# Pipeline: Discrete Covariate Extraction for GLM / Phylogeography
+# Layers: ${checkedDatasets.join(", ")}
+# Date Mode: ${dateMode.toUpperCase()} (${startDate} to ${endDate})
+# Generated: ${nowIso}
+# ==============================================================================
+
+library(rgee)
+library(terra)
+
+# 1. Initialize Earth Engine in R
+ee_Initialize(drive = TRUE)
+
+# 2. Define Sample Points
+sample_points <- data.frame(
+  id = c("Sample_01", "Sample_02", "Sample_03"),
+  lon = c(18.4241, 28.0473, 31.0218),
+  lat = c(-33.9249, -26.2041, -29.8587)
+)
+
+features <- apply(sample_points, 1, function(row) {
+  ee$Feature(ee$Geometry$Point(c(as.numeric(row["lon"]), as.numeric(row["lat"]))), list(sample_id = row["id"]))
+})
+points <- ee$FeatureCollection(features)
+
+# 3. Stack Covariate Layers
+${checkedDatasets.map(d => {
+  const p = PRESETS[d] || {};
+  if (d === "srtm") {
+    return `img_${d} <- ee$Image('${p.asset || "USGS/SRTMGL1_003"}')$select('elevation')$rename('srtm_elevation')`;
+  }
+  return `img_${d} <- ee$ImageCollection('${p.asset || "UCSB-CHG/CHIRPS/DAILY"}')$
+  filterDate('${startDate}', '${endDate}')$
+  select('${p.band || "precipitation"}')$
+  ${p.reducer || "mean"}()$
+  rename('${d}_val')`;
+}).join("\n\n")}
+
+stacked <- ee$Image$cat(list(${checkedDatasets.map(d => `img_${d}`).join(", ")}))
+
+# 4. Extract Covariates
+extracted <- stacked$reduceRegions(
+  collection = points,
+  reducer = ee$Reducer$${zonalStat}(),
+  scale = ${scale}
+)
+
+# 5. Export Table to Google Drive (CSV)
+task <- ee$batch$Export$table$toDrive(
+  collection = extracted,
+  description = 'PhyloCov_Discrete_Covariates',
+  folder = 'PhyloCov_Exports',
+  fileNamePrefix = 'phylocov_discrete_covariates',
+  fileFormat = 'CSV'
+)
+
+task$start()
+message("Extraction task submitted! Check progress with: ee_monitoring(task)")
+`;
+        } else {
+          // JavaScript (GEE Code Editor)
+          return `/**
+ * PhyloCov Explorer - Reproducible Earth Engine Pipeline Script
+ * Pipeline: Discrete Covariate Extraction for GLM / Phylogeography
+ * Layers: ${checkedDatasets.join(", ")}
+ * Generated: ${nowIso}
+ * 
+ * Paste directly into Google Earth Engine Code Editor:
+ * https://code.earthengine.google.com
+ */
+
+// 1. Define Sample Points / Features
+var points = ee.FeatureCollection([
+  ee.Feature(ee.Geometry.Point([18.4241, -33.9249]), { sample_id: 'Sample_01' }),
+  ee.Feature(ee.Geometry.Point([28.0473, -26.2041]), { sample_id: 'Sample_02' }),
+  ee.Feature(ee.Geometry.Point([31.0218, -29.8587]), { sample_id: 'Sample_03' })
+]);
+
+// 2. Prepare Covariate Layers
+${checkedDatasets.map(d => {
+  const p = PRESETS[d] || {};
+  if (d === "srtm") {
+    return `var img_${d} = ee.Image('${p.asset || "USGS/SRTMGL1_003"}').select(['elevation'], ['srtm_elevation']);`;
+  }
+  return `var img_${d} = ee.ImageCollection('${p.asset || "UCSB-CHG/CHIRPS/DAILY"}')
+  .filterDate('${startDate}', '${endDate}')
+  .select(['${p.band || "precipitation"}'])
+  .${p.reducer || "mean"}()
+  .rename('${d}_val');`;
+}).join("\n\n")}
+
+// 3. Stack Layers into Multi-Band Image
+var stacked = ee.Image.cat([${checkedDatasets.map(d => `img_${d}`).join(", ")}]);
+
+// 4. Sample Points Across Covariates
+var extracted = stacked.reduceRegions({
+  collection: points,
+  reducer: ee.Reducer.${zonalStat}(),
+  scale: ${scale}
+});
+
+// 5. Visualize Sample Locations
+Map.centerObject(points, 5);
+Map.addLayer(points, { color: 'red' }, 'Sample Locations');
+
+// 6. Export Table to Google Drive (CSV)
+Export.table.toDrive({
+  collection: extracted,
+  description: 'PhyloCov_Discrete_Covariates',
+  folder: 'PhyloCov_Exports',
+  fileNamePrefix: 'phylocov_discrete_covariates',
+  fileFormat: 'CSV'
+});
+`;
+        }
+      }
+
+      function highlightSyntax(code, lang) {
+        const tokens = [];
+        const placeholder = (idx) => `___TOK_${idx}___`;
+
+        // Protect block comments & docstrings
+        let text = code.replace(/("""[\s\S]*?"""|\/\*[\s\S]*?\*\/)/g, (match) => {
+          const idx = tokens.length;
+          tokens.push(`<span class="tok-comment">${escapeHtmlString(match)}</span>`);
+          return placeholder(idx);
+        });
+
+        // Protect line comments
+        const commentRegex = (lang === "python" || lang === "r") ? /(#.*$)/gm : /(\/\/.*$)/gm;
+        text = text.replace(commentRegex, (match) => {
+          const idx = tokens.length;
+          tokens.push(`<span class="tok-comment">${escapeHtmlString(match)}</span>`);
+          return placeholder(idx);
+        });
+
+        // Protect strings
+        text = text.replace(/('(?:\\'|[^'\r\n])*'|"(?:\\"|[^"\r\n])*")/g, (match) => {
+          const idx = tokens.length;
+          tokens.push(`<span class="tok-string">${escapeHtmlString(match)}</span>`);
+          return placeholder(idx);
+        });
+
+        text = escapeHtmlString(text);
+
+        // Numbers
+        text = text.replace(/\b(\d+(?:\.\d+)?)\b/g, (match) => {
+          const idx = tokens.length;
+          tokens.push(`<span class="tok-number">${match}</span>`);
+          return placeholder(idx);
+        });
+
+        // Keywords
+        const pyKeywords = /\b(import|from|as|def|class|return|try|except|if|else|elif|for|in|True|False|None|print)\b/g;
+        const rKeywords = /\b(library|function|return|if|else|for|in|TRUE|FALSE|NULL|message|c)\b/g;
+        const jsKeywords = /\b(var|let|const|function|return|try|catch|if|else|for|of|in|true|false|null|new)\b/g;
+        const kwRegex = lang === "python" ? pyKeywords : (lang === "r" ? rKeywords : jsKeywords);
+
+        text = text.replace(kwRegex, (match) => {
+          const idx = tokens.length;
+          tokens.push(`<span class="tok-keyword">${match}</span>`);
+          return placeholder(idx);
+        });
+
+        // GEE methods & classes
+        const geeMethods = /\b(ee|ee_Initialize|ee_image_to_drive|ee_monitoring|ImageCollection|Image|Geometry|BBox|Point|Feature|FeatureCollection|Reducer|Export|image|table|toDrive|filterDate|filterBounds|select|clip|multiply|add|reduceRegions|sampleRegions|start|Map|addLayer|centerObject)\b/g;
+        text = text.replace(geeMethods, (match) => {
+          const idx = tokens.length;
+          tokens.push(`<span class="tok-func">${match}</span>`);
+          return placeholder(idx);
+        });
+
+        // Restore tokens
+        for (let i = tokens.length - 1; i >= 0; i--) {
+          text = text.replaceAll(placeholder(i), tokens[i]);
+        }
+
+        return text;
+      }
+
+      function updateCodeModalContent() {
+        let code = "";
+        if (currentCodeModalPipeline === "continuous") {
+          code = generateContinuousScript(currentCodeModalLang);
+          if (codeExportPipelineSubtitle) {
+            codeExportPipelineSubtitle.textContent = "Pipeline 1 · Continuous Covariate Raster Composite (GeoTIFF) Export";
+          }
+          if (codeEditorConfigBadge) {
+            codeEditorConfigBadge.textContent = "Pipeline 1 · Continuous Composite";
+          }
+        } else {
+          code = generateDiscreteScript(currentCodeModalLang);
+          if (codeExportPipelineSubtitle) {
+            codeExportPipelineSubtitle.textContent = "Pipeline 2 · Discrete Point & Polygon Covariate Extraction (CSV)";
+          }
+          if (codeEditorConfigBadge) {
+            codeEditorConfigBadge.textContent = "Pipeline 2 · Discrete GLM Extraction";
+          }
+        }
+
+        currentRawCode = code;
+
+        // Filename and download labels
+        let ext = ".py";
+        if (currentCodeModalLang === "r") ext = ".R";
+        if (currentCodeModalLang === "javascript") ext = ".js";
+
+        const filename = `phylocov_${currentCodeModalPipeline}_pipeline${ext}`;
+        if (codeEditorFilename) codeEditorFilename.textContent = filename;
+        if (downloadCodeBtnText) downloadCodeBtnText.textContent = `Download ${ext}`;
+
+        if (codeExportPre) {
+          codeExportPre.innerHTML = highlightSyntax(code, currentCodeModalLang);
+        }
+      }
+
+      function openCodeExportModal(pipelineType = "continuous") {
+        currentCodeModalPipeline = pipelineType;
+        if (codeExportModal) {
+          codeExportModal.style.display = "flex";
+        }
+        updateCodeModalContent();
+      }
+
+      function closeCodeExportModal() {
+        if (codeExportModal) {
+          codeExportModal.style.display = "none";
+        }
+      }
+
+      // Tab switching
+      if (langTabs.length > 0) {
+        langTabs.forEach(tab => {
+          tab.addEventListener("click", () => {
+            langTabs.forEach(t => t.classList.remove("active"));
+            tab.classList.add("active");
+            currentCodeModalLang = tab.dataset.lang || "python";
+            updateCodeModalContent();
+          });
+        });
+      }
+
+      // Copy Code
+      if (copyCodeBtn) {
+        copyCodeBtn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(currentRawCode);
+            if (copyCodeBtnText) copyCodeBtnText.textContent = "✓ Copied!";
+            copyCodeBtn.style.borderColor = "var(--accent-color)";
+            copyCodeBtn.style.color = "var(--accent-color)";
+            setTimeout(() => {
+              if (copyCodeBtnText) copyCodeBtnText.textContent = "Copy Code";
+              copyCodeBtn.style.borderColor = "";
+              copyCodeBtn.style.color = "";
+            }, 2000);
+          } catch (err) {
+            console.error("Failed to copy code to clipboard", err);
+          }
+        });
+      }
+
+      // Download Code File
+      if (downloadCodeBtn) {
+        downloadCodeBtn.addEventListener("click", () => {
+          let ext = ".py";
+          let mime = "text/x-python";
+          if (currentCodeModalLang === "r") {
+            ext = ".R";
+            mime = "text/x-r";
+          } else if (currentCodeModalLang === "javascript") {
+            ext = ".js";
+            mime = "application/javascript";
+          }
+
+          const filename = `phylocov_${currentCodeModalPipeline}_pipeline${ext}`;
+          const blob = new Blob([currentRawCode], { type: `${mime};charset=utf-8` });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        });
+      }
+
+      // Modal Triggers
+      if (navOpenCodeBtn) {
+        navOpenCodeBtn.addEventListener("click", () => {
+          openCodeExportModal(activePipeline || "continuous");
+        });
+      }
+
+      if (mapInspectCodeBtn) {
+        mapInspectCodeBtn.addEventListener("click", () => {
+          openCodeExportModal("continuous");
+        });
+      }
+
+      if (glmInspectCodeBtn) {
+        glmInspectCodeBtn.addEventListener("click", () => {
+          openCodeExportModal("discrete");
+        });
+      }
+
+      // Modal Close Listeners
+      if (closeCodeExportBtn) {
+        closeCodeExportBtn.addEventListener("click", closeCodeExportModal);
+      }
+
+      if (codeExportModal) {
+        codeExportModal.addEventListener("click", (e) => {
+          if (e.target === codeExportModal) {
+            closeCodeExportModal();
+          }
+        });
+      }
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && codeExportModal && codeExportModal.style.display === "flex") {
+          closeCodeExportModal();
+        }
+      });
     }
   }
 });
