@@ -61,7 +61,7 @@
         <div class="container">
           <h2>Background & Aims</h2>
           <p>Quantifying the climatic and ecological drivers of climate-sensitive pathogen transmission remains a key challenge in integrated phylodynamic modeling. PhyloCov bridges this gap by providing an accessible, web-based platform built on Google Earth Engine to host, explore, and extract time-varying environmental covariates.</p>
-          <p>The platform supports two distinct analytical pipelines to enhance the application of transmission models: continuous phylodynamic analysis (via GeoJSON extraction) and discrete phylodynamic analysis (via Shapefile input extraction for GLMs).</p>
+          <p>The platform supports two distinct analytical pipelines to enhance the application of transmission models: continuous phylodynamic analysis (via cloud GeoTIFF raster composites for <code>seraphim</code>) and discrete phylodynamic analysis (via point or boundary covariate extraction and standardized BEAST GLM predictor matrices).</p>
         </div>
       </section>
 
@@ -69,7 +69,7 @@
       <section class="content-section interactive-app fade-in-section" style="padding-bottom: 2rem;">
         <div class="app-header">
           <h2>Interactive Workspace</h2>
-          <p>Explore, visualize, and extract climate and environmental covariates. Select Pipeline 1 for continuous phylogeographic overlays (BEAST tree/GeoJSON outputs) or Pipeline 2 for discrete phylodynamic GLM point extraction (CSV sample uploads).</p>
+          <p>Explore, visualize, and extract climate and environmental covariates. Select Pipeline 1 for continuous phylogeographic raster exports (GeoTIFF composites aligned to regions or BEAST tree extents) or Pipeline 2 for discrete phylodynamic covariate and GLM matrix extraction (CSV sample points or GeoJSON/Shapefile boundaries).</p>
         </div>
         <div class="map-wrapper" style="position: relative;">
           <div id="map" class="leaflet-map"></div>
@@ -904,7 +904,7 @@ Sample_003,-29.85,31.02,2021-08-10,Durban</pre>
                   <div style="font-size: 0.8rem; color: #8b949e; line-height: 1.5; background: var(--bg-color-alt); border: 1px solid #30363d; padding: 0.75rem; border-radius: 6px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.3);">
                     <div>• <strong>GeoJSON (<code>.geojson</code>, <code>.json</code>):</strong> FeatureCollection of Polygon or MultiPolygon geometries with location/deme attributes (e.g. <code>NAME_1</code>, <code>admin</code>).</div>
                     <div style="margin-top: 0.35rem;">• <strong>Zipped Shapefile (<code>.zip</code>):</strong> Archive containing <code>.shp</code>, <code>.dbf</code>, and <code>.shx</code> files in WGS84 (EPSG:4326).</div>
-                    <div style="margin-top: 0.35rem;">• Zonal environmental reductions (mean) are computed across each polygon boundary, and geometric centroids are automatically determined for BEAST GLM distance matrices.</div>
+                    <div style="margin-top: 0.35rem;">• Zonal environmental reductions (mean or median) are computed across each polygon boundary, and geometric centroids are automatically determined for BEAST GLM distance matrices.</div>
                   </div>
                 </div>
               </div>

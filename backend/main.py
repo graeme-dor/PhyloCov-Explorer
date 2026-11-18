@@ -104,6 +104,37 @@ def adjust_monthly_dates(start_date_str: str, end_date_str: str):
             detail=f"Invalid date format. Must be YYYY-MM-DD. Error: {str(e)}"
         )
 
+def normalize_sample_date(raw_date: Optional[str]) -> Optional[str]:
+    """
+    Normalizes common sample date formats (ISO YYYY-MM-DD, timestamps, YYYY/MM/DD,
+    DD/MM/YYYY, MM/DD/YYYY, YYYY-MM, YYYY) into 'YYYY-MM-DD' for ee.Date().
+    Returns None if empty or unparseable.
+    """
+    if not raw_date:
+        return None
+    s = str(raw_date).strip()
+    if not s:
+        return None
+    if "T" in s:
+        s = s.split("T", 1)[0].strip()
+    elif " " in s:
+        s = s.split(" ", 1)[0].strip()
+
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%m/%d/%y"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    for fmt in ("%Y-%m", "%Y/%m"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y-%m-01")
+        except ValueError:
+            continue
+    if len(s) == 4 and s.isdigit():
+        return f"{s}-01-01"
+    return None
+
+
 PRESETS = {
     "chirps": {
         "asset": "UCSB-CHG/CHIRPS/DAILY",
@@ -112,6 +143,7 @@ PRESETS = {
         "multiplier": 1.0,
         "offset": 0.0,
         "is_monthly": False,
+        "cadence": "daily",
         "palette": ['#ffffcc', '#a1dab4', '#41b6c4', '#2c7fb8', '#253494'],
         "vis_min": 0.0,
         "vis_max": 50.0,
@@ -128,6 +160,7 @@ PRESETS = {
         "multiplier": 1.0,
         "offset": -273.15,
         "is_monthly": False,
+        "cadence": "daily",
         "palette": ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026'],
         "vis_min": 0.0,
         "vis_max": 40.0,
@@ -144,6 +177,7 @@ PRESETS = {
         "multiplier": 1.0,
         "offset": -273.15,
         "is_monthly": True,
+        "cadence": "monthly",
         "palette": ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026'],
         "vis_min": 0.0,
         "vis_max": 40.0,
@@ -160,6 +194,7 @@ PRESETS = {
         "multiplier": 1.0,
         "offset": -273.15,
         "is_monthly": True,
+        "cadence": "monthly",
         "palette": ['#313695', '#4575b4', '#74add1', '#ffffbf', '#fee090', '#f46d43', '#a50026'],
         "vis_min": 0.0,
         "vis_max": 40.0,
@@ -176,6 +211,7 @@ PRESETS = {
         "multiplier": 1.0,
         "offset": -273.15,
         "is_monthly": True,
+        "cadence": "monthly",
         "palette": ['#053061', '#2166ac', '#4393c3', '#f7f7f7', '#fddbc7', '#d6604f', '#b2182b'],
         "vis_min": -10.0,
         "vis_max": 25.0,
@@ -193,6 +229,7 @@ PRESETS = {
         "multiplier": 0.0001,
         "offset": 0.0,
         "is_monthly": False,
+        "cadence": "16day",
         "palette": ['#FFFFFF', '#CE7E45', '#DF923D', '#F1B555', '#FCD163', '#99B718', '#74A901', '#66A000', '#529400', '#3E8601', '#207401', '#056201', '#004C00', '#023B01', '#012E01', '#011D01', '#011301'],
         "vis_min": 0.0,
         "vis_max": 1.0,
@@ -209,6 +246,7 @@ PRESETS = {
         "multiplier": 1.0,
         "offset": 0.0,
         "is_monthly": False,
+        "cadence": "static",
         "palette": ['#000000', '#478FCD', '#86C58E', '#AFC35E', '#8F7131', '#B78D4C', '#E2B8A6', '#FFFFFF'],
         "vis_min": 0.0,
         "vis_max": 3000.0,
@@ -1112,7 +1150,8 @@ def matrix_to_csv(locations: List[str], matrix: List[List[float]]) -> str:
 
 def compute_geojson_centroid(geometry: dict) -> tuple[float, float]:
     """
-    Computes unbiased (lat, lon) centroid for GeoJSON Point, Polygon, MultiPolygon, or GeometryCollection.
+    Computes true area-weighted (lat, lon) centroid for GeoJSON Point, Polygon,
+    MultiPolygon, or GeometryCollection using Shapely (with vertex-mean fallback).
     GeoJSON coordinates are [longitude, latitude].
     """
     if not geometry:
@@ -1123,6 +1162,17 @@ def compute_geojson_centroid(geometry: dict) -> tuple[float, float]:
         if len(coords) >= 2:
             return float(coords[1]), float(coords[0])
         return 0.0, 0.0
+
+    if HAS_SHAPELY:
+        try:
+            s = shapely_shape(geometry)
+            if not s.is_valid:
+                s = s.buffer(0)
+            if not s.is_empty:
+                c = s.centroid
+                return float(c.y), float(c.x)
+        except Exception as e:
+            print(f"Shapely centroid fallback warning: {e}")
 
     all_pts = []
     if gtype == "Polygon":
@@ -1438,6 +1488,7 @@ def extract_single_dataset_values(
     target_multiplier = preset["multiplier"]
     target_offset = preset["offset"]
     is_monthly = preset["is_monthly"]
+    cadence = preset.get("cadence", "monthly" if is_monthly else "daily")
 
     native_res = 1000
     if preset_key == "chirps":
@@ -1512,40 +1563,57 @@ def extract_single_dataset_values(
             extracted_fc = fc.map(extract_range)
 
         else:
+            if isinstance(chunk, list):
+                dated_chunk = [f for f in chunk if getattr(f, "_has_date", True)]
+                if not dated_chunk:
+                    continue
+                fc = ee.FeatureCollection(dated_chunk)
+
             def extract_temporal(feature):
                 date_str = feature.get("date")
                 date_val = ee.Date(date_str)
-                if is_monthly:
-                    img_col = ee.ImageCollection(asset_id).filterDate(date_val, date_val.advance(1, "month"))
+                if cadence == "monthly":
+                    month_start = ee.Date.fromYMD(date_val.get("year"), date_val.get("month"), 1)
+                    img_col = ee.ImageCollection(asset_id).filterDate(month_start, month_start.advance(1, "month"))
+                elif cadence == "16day":
+                    img_col = (
+                        ee.ImageCollection(asset_id)
+                        .filterDate(date_val.advance(-16, "day"), date_val.advance(1, "day"))
+                        .sort("system:time_start", False)
+                        .limit(1)
+                    )
                 else:
                     img_col = ee.ImageCollection(asset_id).filterDate(date_val, date_val.advance(1, "day"))
 
-                img = img_col.select(target_band)
-                if target_reducer == "sum":
-                    img = img.sum()
-                elif target_reducer == "min":
-                    img = img.min()
-                elif target_reducer == "max":
-                    img = img.max()
-                elif target_reducer == "median":
-                    img = img.median()
-                else:
-                    img = img.mean()
+                def compute_feature_val():
+                    img = img_col.select(target_band)
+                    if target_reducer == "sum":
+                        img = img.sum()
+                    elif target_reducer == "min":
+                        img = img.min()
+                    elif target_reducer == "max":
+                        img = img.max()
+                    elif target_reducer == "median":
+                        img = img.median()
+                    else:
+                        img = img.mean()
 
-                if target_multiplier != 1.0:
-                    img = img.multiply(target_multiplier)
-                if target_offset != 0.0:
-                    img = img.add(target_offset)
+                    if target_multiplier != 1.0:
+                        img = img.multiply(target_multiplier)
+                    if target_offset != 0.0:
+                        img = img.add(target_offset)
 
-                val = img.reduceRegion(
-                    reducer=ee_reducer,
-                    geometry=feature.geometry(),
-                    scale=native_res,
-                    maxPixels=1e9,
-                    bestEffort=True,
-                    tileScale=4
-                ).get(target_band)
-                return feature.set("extracted_val", val)
+                    val = img.reduceRegion(
+                        reducer=ee_reducer,
+                        geometry=feature.geometry(),
+                        scale=native_res,
+                        maxPixels=1e9,
+                        bestEffort=True,
+                        tileScale=4
+                    ).get(target_band)
+                    return feature.set("extracted_val", val)
+
+                return ee.Feature(ee.Algorithms.If(img_col.size().gt(0), compute_feature_val(), feature))
 
             extracted_fc = fc.map(extract_temporal)
 
@@ -1783,11 +1851,13 @@ async def extract_glm_covariates(
             if not geom or not geom.get("coordinates"):
                 continue
             props = f.get("properties") or {}
-            date_val = str(props.get(date_prop, "")).strip() if date_prop else ""
+            norm_date = normalize_sample_date(props.get(date_prop)) if date_prop else None
             try:
                 clean_geom = simplify_geojson_geometry(geom)
                 ee_geom = ee.Geometry(clean_geom)
-                ee_features.append(ee.Feature(ee_geom, {"row_idx": idx, "date": date_val}))
+                feat = ee.Feature(ee_geom, {"row_idx": idx, "date": norm_date or ""})
+                feat._has_date = bool(norm_date)
+                ee_features.append(feat)
                 valid_indices.append(idx)
             except Exception as e_geom:
                 print(f"Skipping geometry index {idx}: {e_geom}")
@@ -1795,6 +1865,12 @@ async def extract_glm_covariates(
 
         if not ee_features:
             raise HTTPException(status_code=400, detail="No features with valid geometric coordinates found in spatial file.")
+
+        if temporal_datasets and not use_manual_range and not any(getattr(f, "_has_date", False) for f in ee_features):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not parse any valid dates from property '{date_prop}'. Expected formats such as YYYY-MM-DD (e.g. 2021-03-15)."
+            )
 
         # Query all requested datasets in parallel
         results_per_dataset = {}
@@ -1960,7 +2036,7 @@ Input Mode: Spatial Boundaries ({file_type.upper()})
 Extracted Datasets ({len(target_datasets)}): {", ".join(target_datasets)}
 Covariate Columns: {", ".join(new_col_names)}
 Discrete Locations ({len(locations)}): {", ".join(locations)}
-Polygon Aggregation Reducer: Zonal Mean across boundaries
+Polygon Aggregation Reducer: Zonal {matrix_aggregation.capitalize()} across boundaries
 Location Aggregation Function: {matrix_aggregation}
 
 HOW TO USE IN BEAST / BEAUti:
@@ -2076,25 +2152,29 @@ of human influenza H3N2. PLoS Pathogens, 10(2), e1003932.
 
     rows = []
     features = []
-    for idx, row in enumerate(reader):
+    for row in reader:
         try:
             lat = float(row[lat_col])
             lon = float(row[lon_col])
         except (ValueError, TypeError):
             continue
 
-        date_val = ""
-        if date_col:
-            date_val = (row[date_col] or "").strip()
-
+        norm_date = normalize_sample_date(row[date_col]) if date_col else None
+        row_idx = len(rows)
         rows.append(row)
         geom = ee.Geometry.Point([lon, lat])
-        features.append(ee.Feature(geom, {"row_idx": idx, "date": date_val}))
+        feat = ee.Feature(geom, {"row_idx": row_idx, "date": norm_date or ""})
+        feat._has_date = bool(norm_date)
+        features.append(feat)
 
     if not features:
         raise HTTPException(status_code=400, detail="No rows with valid numeric coordinates found in the CSV.")
 
-    fc = ee.FeatureCollection(features)
+    if temporal_datasets and not use_manual_range and not any(getattr(f, "_has_date", False) for f in features):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not parse any valid dates from column '{date_col}'. Expected formats such as YYYY-MM-DD (e.g. 2021-03-15)."
+        )
 
     # Query all requested datasets in parallel
     results_per_dataset = {}

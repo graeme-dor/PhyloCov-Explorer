@@ -6,27 +6,28 @@
 
 **PhyloCov-Explorer** is an interactive, web-based framework built on Google Earth Engine (GEE) designed to host, explore, and extract time-varying environmental covariates relevant to modeling the transmission of climate-sensitive pathogens.
 
-This platform bridges the gap in integrated phylodynamic modeling by providing streamlined access to high-resolution Earth observation datasets (e.g., climate, land use, vector distributions) directly in the browser—fully alleviating the need for complex local GIS/remote sensing setups.
-
-![PhyloCov Web Application Preview](https://github.com/graeme-dor/PhyloCov-Explorer/assets/placeholder-if-you-want-to-add-one)
+This platform bridges the gap in integrated phylodynamic modeling by providing streamlined access to high-resolution Earth observation datasets (climate, vegetation, land surface temperature, topography, and custom GEE assets) directly in the browser—removing the need for complex local GIS and remote-sensing preprocessing pipelines.
 
 ## Analytical Pipelines
 
-PhyloCov focuses on accommodating two distinct paths for downstream analysis:
+PhyloCov supports two complementary workflows for downstream phylodynamic inference:
 
-### 1. Continuous Phylodynamics (Interactive Extraction)
-Extract covariate data in **GeoJSON** format directly from the interactive map interface. This environmental data is instantly ready for post-hoc and landscape analyses using tools such as Seraphim. 
+### 1. Continuous Phylodynamics (Cloud GeoTIFF Raster Export)
+Define regions of interest by country, continent, drawn bounding box, or spatial extents parsed directly from continuous BEAST `.tree`/`.tre`, CSV, or GeoJSON files, and export georeferenced **GeoTIFF** environmental composites directly from Google Earth Engine. Exported rasters are immediately ready for post-hoc continuous phylogeographic and landscape movement analyses using tools such as `seraphim` in R.
 
-### 2. Discrete Phylodynamics (Shapefile / GLM)
-Supply custom point or polygon shapefiles to extract specific covariate data. PhyloCov automatically aggregates and formats these inputs into pairwise or origin-destination **CSV matrices**, constructed to exactly match the Generalized Linear Model (GLM) integration requirements for software like BEAST.
+### 2. Discrete Phylodynamics (Sample Points & Boundary GLM Extraction)
+Upload discrete sample tables (`CSV`, `TSV`, `Excel`) or administrative/ecological boundary geometries (`GeoJSON` or multi-layer zipped ESRI `Shapefiles`) to extract multi-layer environmental covariates concurrently. PhyloCov optionally aggregates and standardizes covariates across off-diagonal elements into $K \times K$ pairwise predictor **CSV matrices** (Haversine raw/log distances, origin, destination, absolute difference, and pairwise average) formatted for direct Generalized Linear Model (GLM) import in BEAST / BEAUti.
 
-## How to Use
+## Reproducibility
 
-1. Navigate to the **[PhyloCov-Explorer Application](https://graeme-dor.github.io/PhyloCov-Explorer/)**.
-2. **App:** Use the interactive mapping tools to select your region of interest, timeframes, and desired environmental layers.
-3. **Datasets:** Browse the comprehensive catalog of currently hosted ecological covariates (including resolution, sources, and temporality).
-4. **Extraction:** Export the generated GeoJSON or CSV matrices directly to your local machine for immediate deployment in your phylodynamic inference pipelines.
+Every pipeline configuration in PhyloCov can be inspected and exported as standalone, reproducible code in **Python (`earthengine-api`)**, **R (`rgee` / `terra`)**, or **Google Earth Engine JavaScript** via the **Export Script** modal.
+
+## Navigation
+
+1. **[Live Application](https://graeme-dor.github.io/PhyloCov-Explorer/)**: Interactive map workspace for Pipeline 1 & Pipeline 2 exploration and export.
+2. **[Datasets Catalog](https://graeme-dor.github.io/PhyloCov-Explorer/datasets.html)**: Specifications for curated presets (`CHIRPS`, `ERA5`, `ERA5-Land`, `MODIS NDVI`, `MODIS LST`, `SRTM`) and custom GEE catalog assets.
+3. **[About & Methods](https://graeme-dor.github.io/PhyloCov-Explorer/about.html)**: Mathematical derivations of GLM predictors, off-diagonal standardization, BEAST/BEAUti & `seraphim` guides, and [Publication Workflow Schema](https://graeme-dor.github.io/PhyloCov-Explorer/workflow_diagram.html).
 
 ## Citing PhyloCov
 
-If you utilize PhyloCov-Explorer for your research, please refer to the website's **[About & Methods](https://graeme-dor.github.io/PhyloCov-Explorer/about.html)** tab for up-to-date citation instructions concerning the associated publication.
+If you utilize PhyloCov-Explorer for your research, please refer to the **[About & Methods](https://graeme-dor.github.io/PhyloCov-Explorer/about.html#citations)** page for citation instructions and primary dataset references.

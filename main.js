@@ -386,9 +386,7 @@ document.addEventListener("DOMContentLoaded", () => {
       hiddenEndId = "glm_end_date";
       rowId = "glm_date_row";
     } else {
-      hiddenStartId = "start_date";
-      hiddenEndId = "end_date";
-      rowId = "export_date_row";
+      return;
     }
     
     const row = document.getElementById(rowId);
@@ -487,8 +485,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (infoBox) {
         infoBox.textContent = "Custom Google Earth Engine Dataset (enter Asset ID below)";
       }
-      const rowId = prefix === "map" ? "map_date_row" : "export_date_row";
-      const row = document.getElementById(rowId);
+      const row = document.getElementById("map_date_row");
       if (row) row.style.display = "none";
       return;
     }
@@ -790,387 +787,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   sections.forEach(section => observer.observe(section));
 
-  // --- Large Scale Export Logic ---
-  const exportForm = document.getElementById("exportForm");
-  if (exportForm) {
-    const exportBtn = document.getElementById("exportBtn");
-    const exportDatasetSelect = document.getElementById("dataset");
-    const exportStartDateInput = document.getElementById("start_date");
-    const exportEndDateInput = document.getElementById("end_date");
-    const exportDateRow = document.getElementById("export_date_row");
-    const exportDatasetInfoBox = document.getElementById("exportDatasetInfoBox");
-
-    const exportCustomPanel = document.getElementById("export_custom_panel");
-    const exportCustomAssetInput = document.getElementById("export_custom_asset");
-    const exportCustomLoadBtn = document.getElementById("export_custom_load_btn");
-    const exportCustomError = document.getElementById("export_custom_error");
-    const exportCustomBandSelect = document.getElementById("export_custom_band");
-    const exportCustomBandGroup = document.getElementById("export_custom_band_group");
-    const exportCustomReducerGroup = document.getElementById("export_custom_reducer_group");
-    const exportCustomScalePresetGroup = document.getElementById("export_custom_scale_preset_group");
-    const exportCustomScalingRow = document.getElementById("export_custom_scaling_row");
-    const exportCustomMultiplier = document.getElementById("export_custom_multiplier");
-    const exportCustomOffset = document.getElementById("export_custom_offset");
-    const exportCustomScalePreset = document.getElementById("export_custom_scale_preset");
-
-    let loadedExportAssetType = "ImageCollection";
-    let exportBandsMetadata = [];
-
-    const exportScaleSelect = document.getElementById("export_scale_select");
-    const exportScaleCustom = document.getElementById("scale");
-
-    if (exportCustomScalePreset) {
-      exportCustomScalePreset.addEventListener("change", () => {
-        const val = exportCustomScalePreset.value;
-        if (val === "none") {
-          exportCustomMultiplier.value = 1.0;
-          exportCustomOffset.value = 0.0;
-          exportCustomScalingRow.style.display = "none";
-        } else if (val === "custom") {
-          exportCustomScalingRow.style.display = "flex";
-        }
-      });
-    }
-
-    if (exportCustomBandSelect) {
-      exportCustomBandSelect.addEventListener("change", () => {
-        // Reset scale preset to original values (no scaling)
-        exportCustomScalePreset.value = "none";
-        exportCustomScalePreset.dispatchEvent(new Event("change"));
-      });
-    }
-
-    if (exportScaleSelect && exportScaleCustom) {
-      exportScaleSelect.addEventListener("change", (e) => {
-        if (e.target.value === "custom") {
-          exportScaleCustom.style.display = "block";
-          exportScaleCustom.required = true;
-        } else {
-          exportScaleCustom.style.display = "none";
-          exportScaleCustom.required = false;
-          if (e.target.value === "native") {
-            const val = exportDatasetSelect.value;
-            if (val === "custom") {
-              exportScaleCustom.value = exportScaleCustom.dataset.nativeResolution || 5000;
-            } else {
-              const meta = datasetMetadata[val];
-              if (meta) exportScaleCustom.value = meta.res;
-            }
-          } else {
-            exportScaleCustom.value = parseInt(e.target.value, 10);
-          }
-        }
-      });
-    }
-
-    if (exportCustomLoadBtn) {
-      exportCustomLoadBtn.addEventListener("click", async () => {
-        const assetId = exportCustomAssetInput.value.trim();
-        if (!assetId) {
-          showExportError("Please enter a GEE Asset ID");
-          return;
-        }
-
-        exportCustomLoadBtn.disabled = true;
-        exportCustomLoadBtn.textContent = "Loading...";
-        exportCustomError.style.display = "none";
-
-        try {
-          const res = await fetch(`${BACKEND_URL}/datasets/info?id=${encodeURIComponent(assetId)}`);
-          const data = await res.json();
-
-          if (!res.ok) {
-            throw new Error(data.detail || "Failed to load GEE asset metadata");
-          }
-
-          exportBandsMetadata = data.bands;
-          exportCustomBandSelect.innerHTML = "";
-          exportBandsMetadata.forEach(band => {
-            const opt = document.createElement("option");
-            opt.value = band.id;
-            let label = band.id;
-            if (band.description) {
-              label += ` - ${band.description}`;
-            }
-            if (band.units) {
-              label += ` (${band.units})`;
-            }
-            opt.textContent = label;
-            exportCustomBandSelect.appendChild(opt);
-          });
-
-          loadedExportAssetType = data.type;
-          exportScaleCustom.dataset.nativeResolution = data.resolution;
-          exportScaleCustom.value = data.resolution;
-          if (exportScaleSelect) {
-            const nativeOption = exportScaleSelect.querySelector('option[value="native"]');
-            if (nativeOption) {
-              nativeOption.textContent = `${data.resolution.toLocaleString()}m (Native)`;
-            }
-            exportScaleSelect.value = "native";
-            exportScaleCustom.style.display = "none";
-            exportScaleCustom.required = false;
-          }
-
-          if (data.type === "Image") {
-            if (exportDateRow) exportDateRow.style.display = "none";
-            if (exportCustomReducerGroup) exportCustomReducerGroup.style.display = "none";
-          } else {
-            if (exportDateRow) exportDateRow.style.display = "flex";
-            if (exportCustomReducerGroup) exportCustomReducerGroup.style.display = "flex";
-            if (data.start_date && data.end_date) {
-              initDatasetSlider("custom", "export", { start: data.start_date, end: data.end_date });
-            } else {
-              initDatasetSlider("custom", "export");
-            }
-          }
-
-          if (exportCustomBandGroup) exportCustomBandGroup.style.display = "flex";
-          if (exportCustomScalePresetGroup) exportCustomScalePresetGroup.style.display = "flex";
-          
-          // Trigger initial band change to set default scaling presets
-          exportCustomBandSelect.dispatchEvent(new Event("change"));
-          
-        } catch (err) {
-          showExportError(err.message);
-        } finally {
-          exportCustomLoadBtn.disabled = false;
-          exportCustomLoadBtn.textContent = "Load";
-        }
-      });
-    }
-
-    function showExportError(msg) {
-      if (exportCustomError) {
-        exportCustomError.textContent = msg;
-        exportCustomError.style.display = "block";
-      }
-    }
-
-    const exportRoiRadios = document.querySelectorAll('input[name="export_roi_type"]');
-    const exportCountryInput = document.getElementById("country");
-    const exportRegionInput = document.getElementById("export_region");
-    const exportUploadPanel = document.getElementById("export_upload_panel");
-    let currentExportBBox = null;
-
-    exportRoiRadios.forEach(radio => {
-      radio.addEventListener("change", (e) => {
-        exportCountryInput.value = "";
-        exportRegionInput.value = "";
-        currentExportBBox = null;
-        
-        if (e.target.value === "country") {
-          exportCountryInput.style.display = "block";
-          exportRegionInput.style.display = "none";
-          exportUploadPanel.style.display = "none";
-          exportCountryInput.required = true;
-          exportRegionInput.required = false;
-        } else if (e.target.value === "region") {
-          exportCountryInput.style.display = "none";
-          exportRegionInput.style.display = "block";
-          exportUploadPanel.style.display = "none";
-          exportCountryInput.required = false;
-          exportRegionInput.required = true;
-        } else if (e.target.value === "bbox_upload") {
-          exportCountryInput.style.display = "none";
-          exportRegionInput.style.display = "none";
-          exportUploadPanel.style.display = "flex";
-          exportCountryInput.required = false;
-          exportRegionInput.required = false;
-        }
-      });
-    });
-
-    setupFileUpload("export", (points, swap) => {
-      const mappedPoints = swap ? points.map(p => ({ lat: p.lon, lon: p.lat })) : points;
-      const bbox = getPaddedBoundingBox(mappedPoints, 5);
-      if (bbox) {
-        currentExportBBox = bbox;
-      }
-    });
-
-    if (exportDatasetSelect) {
-      exportDatasetSelect.addEventListener("change", () => {
-        updateDatasetUI(exportDatasetSelect.value, exportDatasetInfoBox, "export");
-        if (exportDatasetSelect.value === "custom") {
-          if (exportCustomPanel) exportCustomPanel.style.display = "flex";
-          exportScaleCustom.value = exportScaleCustom.dataset.nativeResolution || 5000;
-          if (exportScaleSelect) {
-            const nativeOption = exportScaleSelect.querySelector('option[value="native"]');
-            if (nativeOption) {
-              const resText = exportScaleCustom.dataset.nativeResolution ? `${parseInt(exportScaleCustom.dataset.nativeResolution).toLocaleString()}m` : "5,000m";
-              nativeOption.textContent = `${resText} (Native)`;
-            }
-            exportScaleSelect.value = "native";
-            exportScaleCustom.style.display = "none";
-            exportScaleCustom.required = false;
-          }
-        } else {
-          if (exportCustomPanel) exportCustomPanel.style.display = "none";
-          const meta = datasetMetadata[exportDatasetSelect.value];
-          if (meta && exportScaleCustom) {
-            exportScaleCustom.value = meta.res;
-            if (exportScaleSelect) {
-              const nativeOption = exportScaleSelect.querySelector('option[value="native"]');
-              if (nativeOption) {
-                nativeOption.textContent = `${meta.res.toLocaleString()}m (Native)`;
-              }
-              exportScaleSelect.value = "native";
-              exportScaleCustom.style.display = "none";
-              exportScaleCustom.required = false;
-            }
-          }
-        }
-      });
-      // Trigger initial load
-      exportDatasetSelect.dispatchEvent(new Event('change'));
-    }
-    const exportStatus = document.getElementById("exportStatus");
-    const statusText = document.getElementById("statusText");
-    const statusMessage = document.getElementById("statusMessage");
-    const downloadContainer = document.getElementById("downloadContainer");
-    const downloadLink = document.getElementById("downloadLink");
-    const statusDot = document.querySelector(".status-dot");
-
-    // The base URL for your local FastAPI backend.
-    // In production, this should be the URL of your Cloud Run service.
-    const BACKEND_URL = "https://phylocov-export-backend-719941553080.europe-west1.run.app";
-
-    exportForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-
-      // Reset UI
-      exportBtn.disabled = true;
-      exportBtn.textContent = "Starting...";
-      exportStatus.style.display = "block";
-      downloadContainer.style.display = "none";
-      statusText.textContent = "SUBMITTED";
-      statusMessage.textContent = "Submitting task to Earth Engine...";
-      statusDot.style.backgroundColor = "#d2a8ff"; // Purple
-
-      const formData = new FormData(exportForm);
-      const datasetVal = formData.get("dataset");
-      const isCustom = datasetVal === "custom";
-
-      const roiType = document.querySelector('input[name="export_roi_type"]:checked').value;
-      let roiNamesList = [];
-      if (roiType === "bbox_upload") {
-        if (!currentExportBBox) {
-          alert("Please upload a coordinate file first.");
-          exportBtn.disabled = false;
-          exportBtn.textContent = "Start Export";
-          return;
-        }
-        roiNamesList = [`${currentExportBBox.minLat},${currentExportBBox.minLon},${currentExportBBox.maxLat},${currentExportBBox.maxLon}`];
-      } else if (roiType === "region") {
-        roiNamesList = [exportRegionInput.value];
-      } else {
-        roiNamesList = [exportCountryInput.value];
-      }
-
-      const payload = {
-        dataset: isCustom ? exportCustomAssetInput.value.trim() : datasetVal,
-        roi_type: roiType === "bbox_upload" ? "bbox" : roiType,
-        roi_names: roiNamesList,
-        start_date: isCustom && loadedExportAssetType === "Image" ? "2000-01-01" : formData.get("start_date"),
-        end_date: isCustom && loadedExportAssetType === "Image" ? "2000-01-02" : formData.get("end_date"),
-        scale: parseInt(formData.get("scale"), 10)
-      };
-
-      if (isCustom) {
-        payload.band = exportCustomBandSelect.value;
-        payload.reducer = document.getElementById("export_custom_reducer").value;
-        payload.multiplier = parseFloat(document.getElementById("export_custom_multiplier").value) || 1.0;
-        payload.offset = parseFloat(document.getElementById("export_custom_offset").value) || 0.0;
-      }
-
-      try {
-        const response = await fetch(`${BACKEND_URL}/exports`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.detail || "Failed to start export");
-        }
-
-        const taskId = data.ee_task_id;
-        pollTaskStatus(taskId);
-
-      } catch (error) {
-        statusText.textContent = "FAILED";
-        statusMessage.textContent = error.message;
-        statusDot.style.backgroundColor = "#f85149"; // Red
-        exportBtn.disabled = false;
-        exportBtn.textContent = "Start Export";
-      }
-    });
-
-    async function pollTaskStatus(taskId) {
-      try {
-        const response = await fetch(`${BACKEND_URL}/exports/${taskId}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.detail || "Failed to fetch status");
-        }
-
-        statusText.textContent = data.state;
-
-        if (data.state === "READY" || data.state === "RUNNING") {
-          statusMessage.textContent = "Task is running in Earth Engine. This may take several minutes...";
-          statusDot.style.backgroundColor = "#e3b341"; // Yellow/Orange
-          // Poll again in 10 seconds
-          setTimeout(() => pollTaskStatus(taskId), 10000);
-        } else if (data.state === "COMPLETED") {
-          statusMessage.textContent = "Task completed! Generating secure download link...";
-          statusDot.style.backgroundColor = "#2ea043"; // Green
-          fetchDownloadLink(taskId);
-        } else {
-          // FAILED, CANCELLED, etc.
-          statusMessage.textContent = `Task ended with state: ${data.state}. ${data.error_message || ""}`;
-          statusDot.style.backgroundColor = "#f85149"; // Red
-          exportBtn.disabled = false;
-          exportBtn.textContent = "Start Export";
-        }
-      } catch (error) {
-        statusText.textContent = "ERROR";
-        statusMessage.textContent = `Error polling status: ${error.message}`;
-        statusDot.style.backgroundColor = "#f85149";
-        exportBtn.disabled = false;
-        exportBtn.textContent = "Start Export";
-      }
-    }
-
-    async function fetchDownloadLink(taskId) {
-      try {
-        const response = await fetch(`${BACKEND_URL}/exports/${taskId}/download`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.detail || "Failed to generate download link");
-        }
-
-        statusMessage.textContent = "Ready for download!";
-        downloadLink.href = data.download_url;
-        downloadContainer.style.display = "block";
-
-        exportBtn.disabled = false;
-        exportBtn.textContent = "Start Export";
-
-      } catch (error) {
-        statusText.textContent = "ERROR";
-        statusMessage.textContent = `Failed to get download URL: ${error.message}`;
-        statusDot.style.backgroundColor = "#f85149";
-        exportBtn.disabled = false;
-        exportBtn.textContent = "Start Export";
-      }
-    }
-  }
-
   // --- Native Map Logic (index.html) ---
   const mapElement = document.getElementById("map");
   if (mapElement && typeof L !== "undefined") {
@@ -1370,8 +986,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setupFileUpload("map", (points, swap) => {
       renderUploadedDataOnMap(map, points, swap);
     });
-
-    const BACKEND_URL = "https://phylocov-export-backend-719941553080.europe-west1.run.app"; // Update for local dev if needed: http://127.0.0.1:8000
     
     const datasetSelect = document.getElementById("map_dataset");
     const startDateInput = document.getElementById("map_start_date");
@@ -3068,14 +2682,28 @@ document.addEventListener("DOMContentLoaded", () => {
           parsedRows.push(rowObj);
 
           if (dateColIdx !== -1 && cols[dateColIdx]) {
-            const dateStr = cols[dateColIdx].trim();
+            const dateStr = cols[dateColIdx].trim().split(/[T ]/)[0];
+            let parsedDate = null;
             if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-              dates.push(new Date(dateStr));
+              parsedDate = new Date(`${dateStr}T00:00:00Z`);
+            } else if (/^\d{4}\/\d{2}\/\d{2}$/.test(dateStr)) {
+              parsedDate = new Date(`${dateStr.replace(/\//g, "-")}T00:00:00Z`);
+            } else if (/^\d{1,2}[/-]\d{1,2}[/-]\d{4}$/.test(dateStr)) {
+              const [p1, p2, yr] = dateStr.split(/[/-]/).map(Number);
+              const mo = p1 > 12 ? p2 : p1;
+              const dy = p1 > 12 ? p1 : p2;
+              parsedDate = new Date(Date.UTC(yr, mo - 1, dy));
+            } else if (/^\d{4}[-/]\d{2}$/.test(dateStr)) {
+              const [yr, mo] = dateStr.split(/[-/]/).map(Number);
+              parsedDate = new Date(Date.UTC(yr, mo - 1, 1));
+            } else if (/^\d{4}$/.test(dateStr)) {
+              parsedDate = new Date(Date.UTC(Number(dateStr), 0, 1));
             } else {
               const d = new Date(dateStr);
-              if (!isNaN(d.getTime())) {
-                dates.push(d);
-              }
+              if (!isNaN(d.getTime())) parsedDate = d;
+            }
+            if (parsedDate && !isNaN(parsedDate.getTime())) {
+              dates.push(parsedDate);
             }
           }
         }
@@ -4000,8 +3628,8 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       });
 
-      // Switcher Tab Interaction Logic
-      const pipelineTabs = document.querySelectorAll(".pipeline-tab");
+      // Switcher Tab Interaction Logic (scoped strictly to top-level pipeline tabs)
+      const pipelineTabs = document.querySelectorAll(".pipeline-tab[data-pipeline]");
       const continuousContainer = document.getElementById("continuous_controls_container");
       const discreteContainer = document.getElementById("discrete_controls_container");
 
@@ -4199,8 +3827,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const offset = isCustom ? (parseFloat(document.getElementById("map_custom_offset")?.value) || 0.0) : (meta.offset ?? 0.0);
         const startDate = startDateInput?.value || "2020-01-01";
         const endDate = endDateInput?.value || "2020-01-31";
-        const scale = parseInt(mapScaleSelect?.value === "custom" ? mapScaleCustom?.value : mapScaleSelect?.value, 10) || 5000;
-        const isStatic = datasetKey === "srtm";
+        const rawScale = (mapScaleSelect?.value === "custom" || mapScaleSelect?.value === "native")
+          ? mapScaleCustom?.value
+          : mapScaleSelect?.value;
+        const scale = parseInt(rawScale, 10) || datasetMetadata[datasetKey]?.res || 5000;
+        const isStatic = datasetKey === "srtm" || (isCustom && loadedMapAssetType === "Image");
         const nowIso = new Date().toISOString().split("T")[0];
 
         if (lang === "python") {
@@ -4361,15 +3992,17 @@ Export.image.toDrive({
       }
 
       function generateDiscreteScript(lang) {
-        const checkedInputs = Array.from(document.querySelectorAll("#glmDatasetsList input[type='checkbox']:checked"));
+        const checkedInputs = Array.from(document.querySelectorAll('#glm_datasets_list input[name="glm_datasets"]:checked'));
         const checkedDatasets = checkedInputs.map(el => el.value);
         if (checkedDatasets.length === 0) checkedDatasets.push("chirps");
 
         const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
         const startDate = document.getElementById("glm_start_date")?.value || "2020-01-01";
         const endDate = document.getElementById("glm_end_date")?.value || "2020-12-31";
-        const scale = parseInt(document.getElementById("glm_scale_select")?.value, 10) || 5000;
-        const zonalStat = document.getElementById("glm_zonal_stat_select")?.value || document.getElementById("glm_aggregation_select")?.value || "mean";
+        const scale = Math.min(...checkedDatasets.map(d => datasetMetadata[d]?.res || 5000));
+        const zonalStat = glmInputMode === "boundary"
+          ? (document.getElementById("glm_zonal_stat_select")?.value || "mean")
+          : (document.getElementById("glm_aggregation_select")?.value || "mean");
         const nowIso = new Date().toISOString().split("T")[0];
 
         if (lang === "python") {
@@ -4480,11 +4113,13 @@ ${checkedDatasets.map(d => {
   if (d === "srtm") {
     return `img_${d} <- ee$Image('${p.asset || "USGS/SRTMGL1_003"}')$select('elevation')$rename('srtm_elevation')`;
   }
+  const multChain = p.multiplier && p.multiplier !== 1 ? `$\n  multiply(${p.multiplier})` : "";
+  const offChain = p.offset ? `$\n  add(${p.offset})` : "";
   return `img_${d} <- ee$ImageCollection('${p.asset || "UCSB-CHG/CHIRPS/DAILY"}')$
   filterDate('${startDate}', '${endDate}')$
   select('${p.band || "precipitation"}')$
-  ${p.reducer || "mean"}()$
-  rename('${d}_val')`;
+  ${p.reducer || "mean"}()${multChain}${offChain}$
+  rename('${d}_${p.band || "val"}')`;
 }).join("\n\n")}
 
 stacked <- ee$Image$cat(list(${checkedDatasets.map(d => `img_${d}`).join(", ")}))
@@ -4533,11 +4168,13 @@ ${checkedDatasets.map(d => {
   if (d === "srtm") {
     return `var img_${d} = ee.Image('${p.asset || "USGS/SRTMGL1_003"}').select(['elevation'], ['srtm_elevation']);`;
   }
+  const multChain = p.multiplier && p.multiplier !== 1 ? `\n  .multiply(${p.multiplier})` : "";
+  const offChain = p.offset ? `\n  .add(${p.offset})` : "";
   return `var img_${d} = ee.ImageCollection('${p.asset || "UCSB-CHG/CHIRPS/DAILY"}')
   .filterDate('${startDate}', '${endDate}')
   .select(['${p.band || "precipitation"}'])
-  .${p.reducer || "mean"}()
-  .rename('${d}_val');`;
+  .${p.reducer || "mean"}()${multChain}${offChain}
+  .rename('${d}_${p.band || "val"}');`;
 }).join("\n\n")}
 
 // 3. Stack Layers into Multi-Band Image
