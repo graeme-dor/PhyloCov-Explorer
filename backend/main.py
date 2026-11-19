@@ -381,6 +381,8 @@ def process_gee_image(
                 img = img_col.median()
             elif reducer == "mode":
                 img = img_col.reduce(ee.Reducer.mode())
+                if band:
+                    img = img.rename(band)
             else:
                 img = img_col.mean()
                 
@@ -1466,6 +1468,33 @@ def build_beast_glm_matrices(
     return dist_matrices, cov_matrices, edge_rows, edge_headers
 
 
+def sanitize_col_identifier(asset_id: str, band: str, reducer_tag: str) -> str:
+    """Builds a clean snake_case column and matrix filename identifier for a custom GEE asset + band."""
+    parts = [p for p in asset_id.strip("/").split("/") if p and p.lower() not in ("projects", "users", "assets")]
+    if len(parts) >= 3:
+        short_asset = "_".join(parts[:2])
+    elif parts:
+        short_asset = "_".join(parts)
+    else:
+        short_asset = "custom"
+    raw = f"{short_asset}_{band}_{reducer_tag}"
+    cleaned = "".join(c if c.isalnum() else "_" for c in raw).strip("_").lower()
+    while "__" in cleaned:
+        cleaned = cleaned.replace("__", "_")
+    if len(cleaned) > 54:
+        cleaned = cleaned[:54].rstrip("_")
+    return cleaned or "custom_gee_val"
+
+
+def format_temporal_window_suffix(lag_days: int, window_days: int) -> str:
+    parts = []
+    if lag_days > 0:
+        parts.append(f"lag{lag_days}d")
+    if window_days > 0:
+        parts.append(f"win{window_days}d")
+    return ("_" + "_".join(parts)) if parts else ""
+
+
 def extract_single_dataset_values(
     features_input,
     preset_key: str,
@@ -1473,11 +1502,14 @@ def extract_single_dataset_values(
     start_date: Optional[str],
     end_date: Optional[str],
     has_date_col: bool,
-    spatial_reducer: str = "mean"
+    spatial_reducer: str = "mean",
+    lag_days: int = 0,
+    window_days: int = 0
 ) -> tuple[str, str, dict]:
     """
     Extracts covariate values for a given preset from Earth Engine.
     Operates seamlessly on both point and polygon geometries using zonal reduction.
+    Supports exact-date extraction as well as epidemiological lag and prior averaging windows.
     Chunks features into batches of 40 to ensure request payloads stay under 200KB.
     Returns (preset_key, column_name, {row_idx: val}).
     """
@@ -1504,7 +1536,10 @@ def extract_single_dataset_values(
 
     ee_reducer = ee.Reducer.median() if (spatial_reducer and spatial_reducer.lower() == "median") else ee.Reducer.mean()
     reducer_tag = "median" if (spatial_reducer and spatial_reducer.lower() == "median") else "mean"
-    col_name = f"{preset_key}_{target_band}_{reducer_tag}"
+    win_suffix = ""
+    if preset_key != "srtm" and not use_manual_range and has_date_col:
+        win_suffix = format_temporal_window_suffix(lag_days, window_days)
+    col_name = f"{preset_key}_{target_band}_{reducer_tag}{win_suffix}"
 
     CHUNK_SIZE = 40
     if isinstance(features_input, list):
@@ -1571,19 +1606,33 @@ def extract_single_dataset_values(
 
             def extract_temporal(feature):
                 date_str = feature.get("date")
-                date_val = ee.Date(date_str)
-                if cadence == "monthly":
-                    month_start = ee.Date.fromYMD(date_val.get("year"), date_val.get("month"), 1)
-                    img_col = ee.ImageCollection(asset_id).filterDate(month_start, month_start.advance(1, "month"))
-                elif cadence == "16day":
-                    img_col = (
-                        ee.ImageCollection(asset_id)
-                        .filterDate(date_val.advance(-16, "day"), date_val.advance(1, "day"))
-                        .sort("system:time_start", False)
-                        .limit(1)
-                    )
+                raw_date = ee.Date(date_str)
+                target_date = raw_date.advance(-lag_days, "day") if lag_days > 0 else raw_date
+
+                if window_days > 0:
+                    win_start = target_date.advance(-window_days, "day")
+                    win_end = target_date.advance(1, "day")
+                    if cadence == "monthly":
+                        m_start = ee.Date.fromYMD(win_start.get("year"), win_start.get("month"), 1)
+                        m_end = ee.Date.fromYMD(target_date.get("year"), target_date.get("month"), 1).advance(1, "month")
+                        img_col = ee.ImageCollection(asset_id).filterDate(m_start, m_end)
+                    elif cadence == "16day":
+                        img_col = ee.ImageCollection(asset_id).filterDate(win_start.advance(-15, "day"), win_end)
+                    else:
+                        img_col = ee.ImageCollection(asset_id).filterDate(win_start, win_end)
                 else:
-                    img_col = ee.ImageCollection(asset_id).filterDate(date_val, date_val.advance(1, "day"))
+                    if cadence == "monthly":
+                        month_start = ee.Date.fromYMD(target_date.get("year"), target_date.get("month"), 1)
+                        img_col = ee.ImageCollection(asset_id).filterDate(month_start, month_start.advance(1, "month"))
+                    elif cadence == "16day":
+                        img_col = (
+                            ee.ImageCollection(asset_id)
+                            .filterDate(target_date.advance(-16, "day"), target_date.advance(1, "day"))
+                            .sort("system:time_start", False)
+                            .limit(1)
+                        )
+                    else:
+                        img_col = ee.ImageCollection(asset_id).filterDate(target_date, target_date.advance(1, "day"))
 
                 def compute_feature_val():
                     img = img_col.select(target_band)
@@ -1628,6 +1677,207 @@ def extract_single_dataset_values(
                 val_map[idx] = v
 
     return preset_key, col_name, val_map
+
+
+def extract_custom_dataset_values(
+    features_input,
+    spec: dict,
+    use_manual_range: bool,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    has_date_col: bool,
+    spatial_reducer: str = "mean",
+    lag_days: int = 0,
+    window_days: int = 0
+) -> tuple[str, str, dict]:
+    """
+    Extracts covariate values from any custom Google Earth Engine Image or ImageCollection
+    for discrete points or polygons in Pipeline 2.
+    """
+    asset_id = str(spec.get("asset_id") or "").strip()
+    asset_type = str(spec.get("asset_type") or "").strip()
+    target_band = str(spec.get("band") or "").strip()
+    target_reducer = str(spec.get("temporal_reducer") or "mean").lower()
+    target_multiplier = float(spec.get("multiplier") if spec.get("multiplier") is not None else 1.0)
+    target_offset = float(spec.get("offset") if spec.get("offset") is not None else 0.0)
+    native_res = max(10, min(int(spec.get("resolution") or 1000), 50000))
+
+    # Resolve asset_type or default band dynamically if omitted
+    if asset_type not in ("Image", "ImageCollection") or not target_band:
+        try:
+            temp_img = ee.Image(asset_id)
+            bands = temp_img.bandNames().getInfo()
+            asset_type = "Image"
+            if not target_band and bands:
+                target_band = bands[0]
+        except Exception:
+            col_first = ee.ImageCollection(asset_id).first()
+            if col_first is None:
+                raise ValueError(f"Custom asset '{asset_id}' is empty or inaccessible.")
+            bands = col_first.bandNames().getInfo()
+            asset_type = "ImageCollection"
+            if not target_band and bands:
+                target_band = bands[0]
+
+    is_categorical = (
+        target_reducer == "mode"
+        or target_band.lower() in ("label", "map", "landcover", "lc_type1")
+        or "worldcover" in asset_id.lower()
+        or "dynamicworld" in asset_id.lower()
+    )
+    if is_categorical and target_reducer == "mode":
+        ee_reducer = ee.Reducer.mode()
+        reducer_tag = "mode"
+    elif spatial_reducer and spatial_reducer.lower() == "median":
+        ee_reducer = ee.Reducer.median()
+        reducer_tag = "median"
+    else:
+        ee_reducer = ee.Reducer.mean()
+        reducer_tag = "mean"
+
+    win_suffix = ""
+    if asset_type != "Image" and not use_manual_range and has_date_col:
+        win_suffix = format_temporal_window_suffix(lag_days, window_days)
+    col_name = sanitize_col_identifier(asset_id, target_band, reducer_tag) + win_suffix
+
+    CHUNK_SIZE = 40
+    if isinstance(features_input, list):
+        chunks = [features_input[i:i + CHUNK_SIZE] for i in range(0, len(features_input), CHUNK_SIZE)]
+    else:
+        chunks = [features_input]
+
+    val_map = {}
+    is_monthly_col = "monthly" in asset_id.lower()
+
+    for chunk in chunks:
+        fc = ee.FeatureCollection(chunk) if isinstance(chunk, list) else chunk
+
+        if asset_type == "Image":
+            img = ee.Image(asset_id).select(target_band)
+            if target_multiplier != 1.0:
+                img = img.multiply(target_multiplier)
+            if target_offset != 0.0:
+                img = img.add(target_offset)
+
+            def extract_static_custom(feature):
+                val = img.reduceRegion(
+                    reducer=ee_reducer,
+                    geometry=feature.geometry(),
+                    scale=native_res,
+                    maxPixels=1e9,
+                    bestEffort=True,
+                    tileScale=4
+                ).get(target_band)
+                return feature.set("extracted_val", val)
+
+            extracted_fc = fc.map(extract_static_custom)
+
+        elif use_manual_range or not has_date_col:
+            img = process_gee_image(
+                dataset=asset_id,
+                start_date=start_date,
+                end_date=end_date,
+                band=target_band,
+                reducer=target_reducer,
+                multiplier=target_multiplier,
+                offset=target_offset,
+                downsample_large_ranges=False
+            )
+
+            def extract_range_custom(feature):
+                val = img.reduceRegion(
+                    reducer=ee_reducer,
+                    geometry=feature.geometry(),
+                    scale=native_res,
+                    maxPixels=1e9,
+                    bestEffort=True,
+                    tileScale=4
+                ).get(target_band)
+                return feature.set("extracted_val", val)
+
+            extracted_fc = fc.map(extract_range_custom)
+
+        else:
+            if isinstance(chunk, list):
+                dated_chunk = [f for f in chunk if getattr(f, "_has_date", True)]
+                if not dated_chunk:
+                    continue
+                fc = ee.FeatureCollection(dated_chunk)
+
+            def extract_custom_temporal(feature):
+                date_str = feature.get("date")
+                raw_date = ee.Date(date_str)
+                target_date = raw_date.advance(-lag_days, "day") if lag_days > 0 else raw_date
+
+                if window_days > 0:
+                    win_start = target_date.advance(-window_days, "day")
+                    win_end = target_date.advance(1, "day")
+                    if is_monthly_col:
+                        m_start = ee.Date.fromYMD(win_start.get("year"), win_start.get("month"), 1)
+                        m_end = ee.Date.fromYMD(target_date.get("year"), target_date.get("month"), 1).advance(1, "month")
+                        img_col = ee.ImageCollection(asset_id).filterDate(m_start, m_end)
+                    else:
+                        img_col = ee.ImageCollection(asset_id).filterDate(win_start, win_end)
+                else:
+                    if is_monthly_col:
+                        month_start = ee.Date.fromYMD(target_date.get("year"), target_date.get("month"), 1)
+                        img_col = ee.ImageCollection(asset_id).filterDate(month_start, month_start.advance(1, "month"))
+                    else:
+                        exact_col = ee.ImageCollection(asset_id).filterDate(target_date, target_date.advance(1, "day"))
+                        fallback_col = (
+                            ee.ImageCollection(asset_id)
+                            .filterDate(target_date.advance(-366, "day"), target_date.advance(1, "day"))
+                            .sort("system:time_start", False)
+                            .limit(1)
+                        )
+                        img_col = ee.ImageCollection(
+                            ee.Algorithms.If(exact_col.size().gt(0), exact_col, fallback_col)
+                        )
+
+                def compute_custom_val():
+                    col_band = img_col.select(target_band)
+                    if target_reducer == "sum":
+                        img = col_band.sum()
+                    elif target_reducer == "min":
+                        img = col_band.min()
+                    elif target_reducer == "max":
+                        img = col_band.max()
+                    elif target_reducer == "median":
+                        img = col_band.median()
+                    elif target_reducer == "mode":
+                        img = col_band.reduce(ee.Reducer.mode()).rename(target_band)
+                    else:
+                        img = col_band.mean()
+
+                    if target_multiplier != 1.0:
+                        img = img.multiply(target_multiplier)
+                    if target_offset != 0.0:
+                        img = img.add(target_offset)
+
+                    val = img.reduceRegion(
+                        reducer=ee_reducer,
+                        geometry=feature.geometry(),
+                        scale=native_res,
+                        maxPixels=1e9,
+                        bestEffort=True,
+                        tileScale=4
+                    ).get(target_band)
+                    return feature.set("extracted_val", val)
+
+                return ee.Feature(ee.Algorithms.If(img_col.size().gt(0), compute_custom_val(), feature))
+
+            extracted_fc = fc.map(extract_custom_temporal)
+
+        res = extracted_fc.select(["row_idx", "extracted_val"], retainGeometry=False).getInfo()
+        features_out = res.get("features", [])
+        for f in features_out:
+            props = f.get("properties", {})
+            idx = props.get("row_idx")
+            v = props.get("extracted_val")
+            if idx is not None:
+                val_map[idx] = v
+
+    return asset_id, col_name, val_map
 
 
 @app.post("/inspect-boundary")
@@ -1788,8 +2038,11 @@ async def extract_glm_covariates(
     file: UploadFile = File(...),
     dataset: Optional[str] = Form(None),
     datasets: Optional[str] = Form(None),
+    custom_datasets: Optional[str] = Form(None),
     start_date: Optional[str] = Form(None),
     end_date: Optional[str] = Form(None),
+    lag_days: int = Form(0),
+    window_days: int = Form(0),
     generate_matrices: bool = Form(False),
     location_col: Optional[str] = Form(None),
     matrix_aggregation: str = Form("mean"),
@@ -1800,28 +2053,116 @@ async def extract_glm_covariates(
     Accepts:
     - Tabular sample points (CSV/TSV/Excel) with coordinates and dates
     - Spatial boundaries (GeoJSON or Zipped ESRI Shapefile) with polygons/multipolygons
-    Queries GEE across one or multiple environmental datasets concurrently,
+    Queries GEE across curated presets and/or custom GEE assets concurrently,
     and returns either an enriched file or a full BEAST GLM predictor package (.zip).
     """
+    lag_days = max(0, min(int(lag_days or 0), 3650))
+    window_days = max(0, min(int(window_days or 0), 3650))
+
     target_datasets = []
     if datasets:
         target_datasets = [d.strip().lower() for d in datasets.split(",") if d.strip()]
     elif dataset:
         target_datasets = [dataset.strip().lower()]
 
-    if not target_datasets:
-        raise HTTPException(status_code=400, detail="No dataset specified for extraction.")
-
     for d in target_datasets:
         if d not in PRESETS:
-            raise HTTPException(status_code=400, detail=f"Unsupported dataset: '{d}'. Must be one of: {list(PRESETS.keys())}")
+            raise HTTPException(status_code=400, detail=f"Unsupported preset dataset: '{d}'. Must be one of: {list(PRESETS.keys())}")
+
+    custom_specs: List[dict] = []
+    if custom_datasets:
+        try:
+            parsed_custom = json.loads(custom_datasets)
+            if not isinstance(parsed_custom, list):
+                raise ValueError("custom_datasets must be a JSON array.")
+            for item in parsed_custom:
+                if not isinstance(item, dict):
+                    continue
+                aid = str(item.get("asset_id") or "").strip()
+                if not aid or not ("/" in aid or aid.startswith("projects/") or aid.startswith("users/")):
+                    raise HTTPException(status_code=400, detail=f"Invalid custom GEE Asset ID: '{aid}'")
+                custom_specs.append(item)
+        except HTTPException:
+            raise
+        except Exception as e_cust:
+            raise HTTPException(status_code=400, detail=f"Malformed custom_datasets JSON: {str(e_cust)}")
+
+    if not target_datasets and not custom_specs:
+        raise HTTPException(status_code=400, detail="No dataset specified for extraction.")
+
+    all_layer_labels = list(target_datasets) + [f"{cs.get('asset_id')}[{cs.get('band', '')}]" for cs in custom_specs]
+    total_layer_count = len(all_layer_labels)
 
     contents = await file.read()
     orig_filename = file.filename or "samples.csv"
     orig_stem = orig_filename.rsplit(".", 1)[0]
-    ds_tag = "_and_".join(target_datasets[:2])
-    if len(target_datasets) > 2:
-        ds_tag = f"multi_{len(target_datasets)}_covariates"
+    if total_layer_count > 2:
+        ds_tag = f"multi_{total_layer_count}_covariates"
+    elif target_datasets and not custom_specs:
+        ds_tag = "_and_".join(target_datasets[:2])
+    else:
+        safe_tags = list(target_datasets) + [
+            sanitize_col_identifier(cs.get("asset_id", "custom"), cs.get("band", "val"), "")[:20].rstrip("_")
+            for cs in custom_specs
+        ]
+        ds_tag = "_and_".join(safe_tags[:2])
+
+    def run_concurrent_extractions(feat_list, use_manual_rng: bool, has_dt: bool, sp_reducer: str) -> dict:
+        tasks_ordered = []
+        max_workers = max(1, min(total_layer_count, 4))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for ds in target_datasets:
+                fut = executor.submit(
+                    extract_single_dataset_values,
+                    feat_list,
+                    ds,
+                    use_manual_rng,
+                    start_date,
+                    end_date,
+                    has_dt,
+                    sp_reducer,
+                    lag_days,
+                    window_days
+                )
+                tasks_ordered.append((ds, fut))
+            for cs in custom_specs:
+                label = f"{cs.get('asset_id')} ({cs.get('band', '')})"
+                fut = executor.submit(
+                    extract_custom_dataset_values,
+                    feat_list,
+                    cs,
+                    use_manual_rng,
+                    start_date,
+                    end_date,
+                    has_dt,
+                    sp_reducer,
+                    lag_days,
+                    window_days
+                )
+                tasks_ordered.append((label, fut))
+
+            ordered_results = {}
+            for label, fut in tasks_ordered:
+                try:
+                    src_key, col_name, val_map = fut.result()
+                    unique_col = col_name
+                    suffix_idx = 2
+                    while unique_col in ordered_results:
+                        unique_col = f"{col_name}_{suffix_idx}"
+                        suffix_idx += 1
+                    ordered_results[unique_col] = (src_key, val_map)
+                except HTTPException:
+                    raise
+                except Exception as e_ds:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Earth Engine query error for '{label}': {str(e_ds)}"
+                    )
+        return ordered_results
+
+    temporal_window_desc = "Manual Date Range" if (start_date and end_date) else (
+        f"Exact Sample Dates (lag={lag_days}d, window={window_days}d)" if (lag_days > 0 or window_days > 0) else "Exact Sample Dates (Contemporaneous)"
+    )
 
     # Detect file type: spatial (shapefile / GeoJSON) vs tabular (CSV/Excel)
     file_type, spatial_features, spatial_prop_keys = parse_spatial_file(contents, orig_filename, layer_name=layer_name)
@@ -1830,7 +2171,9 @@ async def extract_glm_covariates(
     # BRANCH A: SPATIAL BOUNDARIES (POLYGONS / GEOJSON / ZIPPED SHAPEFILES)
     # =========================================================================
     if file_type in ["polygon", "point_geojson"]:
-        temporal_datasets = [d for d in target_datasets if d != "srtm"]
+        temporal_datasets = [d for d in target_datasets if d != "srtm"] + [
+            cs.get("asset_id") for cs in custom_specs if str(cs.get("asset_type") or "ImageCollection") != "Image"
+        ]
         date_prop = next((k for k in spatial_prop_keys if k.lower() in ["date", "time", "datetime", "year_month_day"]), None)
         use_manual_range = bool(temporal_datasets and start_date and end_date)
 
@@ -1872,32 +2215,13 @@ async def extract_glm_covariates(
                 detail=f"Could not parse any valid dates from property '{date_prop}'. Expected formats such as YYYY-MM-DD (e.g. 2021-03-15)."
             )
 
-        # Query all requested datasets in parallel
-        results_per_dataset = {}
-        with ThreadPoolExecutor(max_workers=min(len(target_datasets), 4)) as executor:
-            future_to_ds = {
-                executor.submit(
-                    extract_single_dataset_values,
-                    ee_features,
-                    ds,
-                    use_manual_range,
-                    start_date,
-                    end_date,
-                    bool(date_prop),
-                    matrix_aggregation
-                ): ds
-                for ds in target_datasets
-            }
-            for future in future_to_ds:
-                ds = future_to_ds[future]
-                try:
-                    p_key, col_name, val_map = future.result()
-                    results_per_dataset[col_name] = (p_key, val_map)
-                except Exception as e_ds:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Earth Engine query error for dataset '{ds}': {str(e_ds)}"
-                    )
+        # Query all requested datasets (presets + custom GEE assets) in parallel
+        results_per_dataset = run_concurrent_extractions(
+            ee_features,
+            use_manual_range,
+            bool(date_prop),
+            matrix_aggregation
+        )
 
         new_col_names = list(results_per_dataset.keys())
 
@@ -2033,8 +2357,9 @@ async def extract_glm_covariates(
 PHYLOCOV-EXPLORER: BEAST GLM BOUNDARY PREDICTOR PACKAGE
 ========================================================================
 Input Mode: Spatial Boundaries ({file_type.upper()})
-Extracted Datasets ({len(target_datasets)}): {", ".join(target_datasets)}
+Extracted Layers ({total_layer_count}): {", ".join(all_layer_labels)}
 Covariate Columns: {", ".join(new_col_names)}
+Temporal Mode: {temporal_window_desc}
 Discrete Locations ({len(locations)}): {", ".join(locations)}
 Polygon Aggregation Reducer: Zonal {matrix_aggregation.capitalize()} across boundaries
 Location Aggregation Function: {matrix_aggregation}
@@ -2142,7 +2467,9 @@ of human influenza H3N2. PLoS Pathogens, 10(2), e1003932.
             detail="Could not detect latitude and longitude columns. CSV must have columns like 'latitude' and 'longitude'."
         )
 
-    temporal_datasets = [d for d in target_datasets if d != "srtm"]
+    temporal_datasets = [d for d in target_datasets if d != "srtm"] + [
+        cs.get("asset_id") for cs in custom_specs if str(cs.get("asset_type") or "ImageCollection") != "Image"
+    ]
     use_manual_range = bool(temporal_datasets and start_date and end_date)
     if temporal_datasets and not use_manual_range and not date_col:
         raise HTTPException(
@@ -2176,31 +2503,13 @@ of human influenza H3N2. PLoS Pathogens, 10(2), e1003932.
             detail=f"Could not parse any valid dates from column '{date_col}'. Expected formats such as YYYY-MM-DD (e.g. 2021-03-15)."
         )
 
-    # Query all requested datasets in parallel
-    results_per_dataset = {}
-    with ThreadPoolExecutor(max_workers=min(len(target_datasets), 4)) as executor:
-        future_to_ds = {
-            executor.submit(
-                extract_single_dataset_values,
-                features,
-                ds,
-                use_manual_range,
-                start_date,
-                end_date,
-                bool(date_col)
-            ): ds
-            for ds in target_datasets
-        }
-        for future in future_to_ds:
-            ds = future_to_ds[future]
-            try:
-                p_key, col_name, val_map = future.result()
-                results_per_dataset[col_name] = (p_key, val_map)
-            except Exception as e_ds:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Earth Engine query error for dataset '{ds}': {str(e_ds)}"
-                )
+    # Query all requested datasets (presets + custom GEE assets) in parallel
+    results_per_dataset = run_concurrent_extractions(
+        features,
+        use_manual_range,
+        bool(date_col),
+        "mean"
+    )
 
     new_col_names = list(results_per_dataset.keys())
 
@@ -2307,8 +2616,9 @@ of human influenza H3N2. PLoS Pathogens, 10(2), e1003932.
 PHYLOCOV-EXPLORER: BEAST GLM PREDICTOR PACKAGE
 ========================================================================
 Input Mode: Sample Coordinates (CSV)
-Extracted Datasets ({len(target_datasets)}): {", ".join(target_datasets)}
+Extracted Layers ({total_layer_count}): {", ".join(all_layer_labels)}
 Covariate Columns: {", ".join(new_col_names)}
+Temporal Mode: {temporal_window_desc}
 Discrete Locations ({len(locations)}): {", ".join(locations)}
 Sample Aggregation Function: {matrix_aggregation}
 

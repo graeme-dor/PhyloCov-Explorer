@@ -112,7 +112,10 @@
             <div id="continuous_controls_container">
               <form id="nativeMapForm" class="map-form">
                 <div class="form-group" style="margin-bottom: 0.5rem;">
-                  <label>Region of Interest</label>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <label style="margin: 0;">Region of Interest</label>
+                    <button type="button" id="map_load_demo_btn" class="demo-pill-btn" title="Load an example continuous phylogeographic BEAST tree">Load Demo Tree</button>
+                  </div>
                   <div style="display: flex; gap: 0.75rem; margin-top: 0.25rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
                     <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer;">
                       <input type="radio" name="roi_type" value="country" checked> Country
@@ -609,11 +612,14 @@
             <div id="discrete_controls_container" style="display: none;">
               <form id="glmExtractionForm" style="display: flex; flex-direction: column; gap: 1rem;">
                 <div class="form-group">
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; gap: 0.35rem; flex-wrap: wrap;">
                     <label id="glm_step1_label" style="font-weight: 600; margin: 0;">1. Upload Sample Points</label>
-                    <div class="pipeline-switcher" style="padding: 2px; margin-bottom: 0; background: rgba(0,0,0,0.3); border: 1px solid #30363d; border-radius: 6px;">
-                      <button type="button" class="pipeline-tab active" id="glm_mode_point_btn" data-glm-mode="point" style="padding: 2px 8px; font-size: 0.75rem; border-radius: 4px; border: none; cursor: pointer; background: var(--accent-color); color: white;">Points</button>
-                      <button type="button" class="pipeline-tab" id="glm_mode_poly_btn" data-glm-mode="boundary" style="padding: 2px 8px; font-size: 0.75rem; border-radius: 4px; border: none; cursor: pointer; background: transparent; color: var(--text-muted);">Boundaries</button>
+                    <div style="display: flex; align-items: center; gap: 0.4rem;">
+                      <button type="button" id="glm_load_demo_btn" class="demo-pill-btn" title="Load example sample points or administrative boundaries">Load Demo</button>
+                      <div class="pipeline-switcher" style="padding: 2px; margin-bottom: 0; background: rgba(0,0,0,0.3); border: 1px solid #30363d; border-radius: 6px;">
+                        <button type="button" class="pipeline-tab active" id="glm_mode_point_btn" data-glm-mode="point" style="padding: 2px 8px; font-size: 0.75rem; border-radius: 4px; border: none; cursor: pointer; background: var(--accent-color); color: white;">Points</button>
+                        <button type="button" class="pipeline-tab" id="glm_mode_poly_btn" data-glm-mode="boundary" style="padding: 2px 8px; font-size: 0.75rem; border-radius: 4px; border: none; cursor: pointer; background: transparent; color: var(--text-muted);">Boundaries</button>
+                      </div>
                     </div>
                   </div>
                   <div class="upload-dropzone" id="glm_upload_dropzone" style="padding: 1.5rem; border: 2px dashed rgba(255,255,255,0.15); border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.2s ease; background: rgba(255,255,255,0.01);">
@@ -727,6 +733,76 @@
                     </label>
                   </div>
 
+                  <!-- Custom GEE Dataset Builder for Discrete Pipeline -->
+                  <button type="button" id="glm_toggle_custom_btn" class="glm-add-custom-btn" aria-expanded="false">
+                    <span>+ Add Custom GEE Dataset...</span>
+                  </button>
+
+                  <div id="glm_custom_panel" class="glm-custom-panel" style="display: none;">
+                    <div class="glm-custom-panel-header">
+                      <span style="font-size: 0.8rem; font-weight: 600; color: #c9d1d9;">Load GEE Catalog or User Asset</span>
+                      <button type="button" id="glm_close_custom_btn" class="glm-custom-close-btn" aria-label="Close custom dataset panel">&times;</button>
+                    </div>
+
+                    <div class="glm-quick-assets">
+                      <button type="button" class="glm-quick-chip" data-asset="ESA/WorldCover/v100/2020" title="ESA WorldCover 10m Land Cover">WorldCover 10m</button>
+                      <button type="button" class="glm-quick-chip" data-asset="GOOGLE/DYNAMICWORLD/V1" title="Dynamic World 10m Near Real-Time LULC">Dynamic World</button>
+                      <button type="button" class="glm-quick-chip" data-asset="CIESIN/GPWv411/GPW_Population_Density" title="Gridded Population of the World v4.11">Pop Density</button>
+                      <button type="button" class="glm-quick-chip" data-asset="MODIS/061/MOD11A2" title="MODIS 8-Day 1km Land Surface Temperature">MOD11A2 1km</button>
+                    </div>
+
+                    <div style="display: flex; gap: 0.4rem; width: 100%;">
+                      <input type="text" id="glm_custom_asset" placeholder="e.g. ESA/WorldCover/v100/2020" style="flex: 1; min-width: 0; padding: 0.42rem 0.6rem; font-size: 0.82rem; border-radius: 6px;">
+                      <button type="button" id="glm_custom_load_btn" class="btn-secondary" style="padding: 0.42rem 0.7rem; font-size: 0.82rem; border-radius: 6px; white-space: nowrap;">Inspect</button>
+                    </div>
+                    <div id="glm_custom_error" style="color: #f85149; font-size: 0.76rem; display: none;"></div>
+
+                    <div id="glm_custom_config" style="display: none; flex-direction: column; gap: 0.55rem; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 0.55rem;">
+                      <div id="glm_custom_meta_badge" style="font-size: 0.74rem; color: #58a6ff; font-family: monospace;"></div>
+
+                      <div>
+                        <label for="glm_custom_band" style="font-size: 0.76rem; font-weight: 600; display: block; margin-bottom: 0.2rem;">Target Band</label>
+                        <select id="glm_custom_band" style="width: 100%; padding: 0.38rem 0.5rem; font-size: 0.82rem; border-radius: 5px;"></select>
+                      </div>
+
+                      <div id="glm_custom_reducer_group">
+                        <label for="glm_custom_reducer" style="font-size: 0.76rem; font-weight: 600; display: block; margin-bottom: 0.2rem;">Temporal Reducer</label>
+                        <select id="glm_custom_reducer" style="width: 100%; padding: 0.38rem 0.5rem; font-size: 0.82rem; border-radius: 5px;">
+                          <option value="mean">Mean (Average)</option>
+                          <option value="mode">Mode (Categorical / Land Cover)</option>
+                          <option value="median">Median</option>
+                          <option value="sum">Sum (Total)</option>
+                          <option value="max">Max (Maximum)</option>
+                          <option value="min">Min (Minimum)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label for="glm_custom_scale_preset" style="font-size: 0.76rem; font-weight: 600; display: block; margin-bottom: 0.2rem;">Unit Calibration</label>
+                        <select id="glm_custom_scale_preset" style="width: 100%; padding: 0.38rem 0.5rem; font-size: 0.82rem; border-radius: 5px;">
+                          <option value="recommended">Recommended / STAC Metadata</option>
+                          <option value="none">Raw Unscaled Values (×1, +0)</option>
+                          <option value="kelvin_to_celsius">Kelvin to °C (−273.15)</option>
+                          <option value="modis_scale_0001">Scale × 0.0001 (MODIS NDVI/EVI)</option>
+                          <option value="custom">Custom Multiplier & Offset...</option>
+                        </select>
+                      </div>
+
+                      <div id="glm_custom_scaling_row" style="display: none; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                        <div>
+                          <label for="glm_custom_multiplier" style="font-size: 0.72rem; color: #8b949e; display: block; margin-bottom: 0.15rem;">Multiplier</label>
+                          <input type="number" id="glm_custom_multiplier" value="1.0" step="any" style="width: 100%; padding: 0.35rem 0.5rem; font-size: 0.8rem; border-radius: 5px;">
+                        </div>
+                        <div>
+                          <label for="glm_custom_offset" style="font-size: 0.72rem; color: #8b949e; display: block; margin-bottom: 0.15rem;">Offset</label>
+                          <input type="number" id="glm_custom_offset" value="0.0" step="any" style="width: 100%; padding: 0.35rem 0.5rem; font-size: 0.8rem; border-radius: 5px;">
+                        </div>
+                      </div>
+
+                      <button type="button" id="glm_custom_add_layer_btn" class="glm-confirm-custom-btn">+ Add Layer to Covariate List</button>
+                    </div>
+                  </div>
+
                   <!-- Retain hidden select for synchronizing Leaflet map tiles and date range sliders -->
                   <select id="glm_dataset_select" name="dataset" style="display: none;">
                     <option value="" disabled selected>No covariate preview selected</option>
@@ -761,6 +837,30 @@
                     <label style="font-weight: normal; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center; gap: 0.35rem;">
                       <input type="radio" name="glm_date_mode" value="range"> Use date range selection (all points)
                     </label>
+                  </div>
+
+                  <!-- Epidemiological Lag / Prior Temporal Window (Exact-Date Mode) -->
+                  <div id="glm_lag_window_group" style="display: none; margin-top: 0.5rem; background: rgba(0,0,0,0.22); border: 1px solid #30363d; border-radius: 6px; padding: 0.6rem;">
+                    <label for="glm_temporal_window_select" style="font-size: 0.78rem; font-weight: 600; color: #c9d1d9; display: block; margin-bottom: 0.3rem;">Temporal Window / Epidemiological Lag</label>
+                    <select id="glm_temporal_window_select" style="width: 100%; padding: 0.38rem 0.5rem; font-size: 0.82rem; border-radius: 5px;">
+                      <option value="0:0" selected>Contemporaneous (Exact sample date)</option>
+                      <option value="0:7">7-day prior window (t − 7d to t)</option>
+                      <option value="0:14">14-day prior window (t − 14d to t)</option>
+                      <option value="0:30">30-day prior window (t − 30d to t)</option>
+                      <option value="0:60">60-day prior window (t − 60d to t)</option>
+                      <option value="0:90">90-day prior window (t − 90d to t)</option>
+                      <option value="custom">Custom lag &amp; averaging window...</option>
+                    </select>
+                    <div id="glm_custom_lag_row" style="display: none; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.45rem;">
+                      <div>
+                        <label for="glm_lag_days_input" style="font-size: 0.72rem; color: #8b949e; display: block; margin-bottom: 0.15rem;">Lag prior (days)</label>
+                        <input type="number" id="glm_lag_days_input" min="0" max="3650" value="14" style="width: 100%; padding: 0.35rem 0.5rem; font-size: 0.8rem; border-radius: 5px;">
+                      </div>
+                      <div>
+                        <label for="glm_window_days_input" style="font-size: 0.72rem; color: #8b949e; display: block; margin-bottom: 0.15rem;">Window span (days)</label>
+                        <input type="number" id="glm_window_days_input" min="0" max="3650" value="30" style="width: 100%; padding: 0.35rem 0.5rem; font-size: 0.8rem; border-radius: 5px;">
+                      </div>
+                    </div>
                   </div>
                 </div>
 

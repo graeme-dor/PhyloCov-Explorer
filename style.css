@@ -1761,4 +1761,150 @@ iframe.loaded {
   box-shadow: 0 2px 8px rgba(248, 81, 73, 0.25);
 }
 
+/* Demo Example Pill Buttons */
+.demo-pill-btn {
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.demo-pill-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: #38bdf8;
+  color: #ffffff;
+}
+
+/* Pipeline 2 Custom GEE Dataset Builder */
+.glm-add-custom-btn {
+  margin-top: 0.45rem;
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  background: rgba(88, 166, 255, 0.06);
+  border: 1px dashed rgba(88, 166, 255, 0.38);
+  border-radius: 6px;
+  color: #58a6ff;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  text-align: center;
+}
+
+.glm-add-custom-btn:hover {
+  background: rgba(88, 166, 255, 0.14);
+  border-color: #58a6ff;
+}
+
+.glm-custom-panel {
+  margin-top: 0.5rem;
+  background: rgba(13, 17, 23, 0.85);
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.glm-custom-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.glm-custom-close-btn {
+  background: none;
+  border: none;
+  color: #8b949e;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.glm-custom-close-btn:hover {
+  color: #f0f6fc;
+}
+
+.glm-quick-assets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.glm-quick-chip {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #c9d1d9;
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.glm-quick-chip:hover {
+  background: rgba(88, 166, 255, 0.14);
+  border-color: rgba(88, 166, 255, 0.45);
+  color: #58a6ff;
+}
+
+.glm-confirm-custom-btn {
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  background: rgba(46, 160, 67, 0.18);
+  border: 1px solid rgba(46, 160, 67, 0.55);
+  border-radius: 6px;
+  color: #3fb950;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.glm-confirm-custom-btn:hover {
+  background: rgba(46, 160, 67, 0.3);
+  color: #ffffff;
+}
+
+.glm-custom-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(163, 113, 247, 0.18);
+  border: 1px solid rgba(163, 113, 247, 0.4);
+  color: #d2a8ff;
+  flex-shrink: 0;
+}
+
+.glm-remove-custom-btn {
+  background: none;
+  border: none;
+  color: #8b949e;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: color 0.15s ease;
+}
+
+.glm-remove-custom-btn:hover {
+  color: #ff7b72;
+}
+
+
 

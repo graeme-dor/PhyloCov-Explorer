@@ -863,6 +863,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let glmUploadedGeoJsonLayer = null;
     let glmDatasetSelect = null;
     let selectedShapefileLayer = null;
+    const glmCustomLayers = new Map();
+    let glmCustomCounter = 0;
 
     let isDrawingMode = false;
     let drawStartLatLng = null;
@@ -1888,6 +1890,7 @@ document.addEventListener("DOMContentLoaded", () => {
       let dataset, startDate, endDate, roiType, roiNames, isBBox = false;
       let isCustom = false;
       let customAsset = "";
+      let discreteCustomSpec = null;
 
       if (activePipeline === "continuous") {
         dataset = datasetSelect.value;
@@ -1964,7 +1967,19 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         }
 
-        if (options.forceDates) {
+        if (dataset.startsWith("custom:")) {
+          discreteCustomSpec = glmCustomLayers.get(dataset.slice(7)) || null;
+          if (!discreteCustomSpec) {
+            if (mapLoadingOverlay) mapLoadingOverlay.style.display = "none";
+            return;
+          }
+          customAsset = discreteCustomSpec.asset_id;
+        }
+
+        if (discreteCustomSpec && discreteCustomSpec.asset_type === "Image") {
+          startDate = "2000-01-01";
+          endDate = "2000-01-02";
+        } else if (options.forceDates) {
           startDate = options.forceDates.start;
           endDate = options.forceDates.end;
         } else if (previewState.discrete.isRepresentative && previewState.discrete.repStart && previewState.discrete.repEnd) {
@@ -1978,6 +1993,13 @@ document.addEventListener("DOMContentLoaded", () => {
           } else {
             startDate = document.getElementById("glm_start_date").value;
             endDate = document.getElementById("glm_end_date").value;
+          }
+          if ((!startDate || !endDate) && discreteCustomSpec) {
+            const cEnd = discreteCustomSpec.end_date || getPastDate(1);
+            const cStart = discreteCustomSpec.start_date || getPastDate(13);
+            const monthsSpan = Math.max(0, calculateTotalMonths(cStart, cEnd));
+            startDate = getDateFromMonths(cStart, Math.max(0, monthsSpan - 12));
+            endDate = cEnd;
           }
         }
 
@@ -2033,7 +2055,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       try {
         const queryRoiType = isBBox ? "bbox" : roiType;
-        let queryUrl = `${BACKEND_URL}/map?dataset=${encodeURIComponent(isCustom ? customAsset : dataset)}&start_date=${startDate}&end_date=${endDate}&roi_type=${queryRoiType}&roi_names=${encodeURIComponent(roiNames)}`;
+        const targetMapDataset = (isCustom || discreteCustomSpec) ? customAsset : dataset;
+        let queryUrl = `${BACKEND_URL}/map?dataset=${encodeURIComponent(targetMapDataset)}&start_date=${startDate}&end_date=${endDate}&roi_type=${queryRoiType}&roi_names=${encodeURIComponent(roiNames)}`;
         console.log(`[PhyloCov Map Debug] Fetching map layer URL (Request #${requestId}):`, queryUrl);
         
         if (isCustom) {
@@ -2053,6 +2076,16 @@ document.addEventListener("DOMContentLoaded", () => {
             if (bandMeta.vis.min !== undefined && bandMeta.vis.max !== undefined) {
               queryUrl += `&vis_min=${bandMeta.vis.min}&vis_max=${bandMeta.vis.max}`;
             }
+          }
+        } else if (discreteCustomSpec) {
+          const { band, temporal_reducer, multiplier, offset, vis } = discreteCustomSpec;
+          let palette = "viridis";
+          if (vis && Array.isArray(vis.palette) && vis.palette.length > 0) {
+            palette = vis.palette.join(",");
+          }
+          queryUrl += `&band=${encodeURIComponent(band)}&reducer=${encodeURIComponent(temporal_reducer)}&multiplier=${multiplier}&offset=${offset}&palette=${encodeURIComponent(palette)}`;
+          if (vis && vis.min !== undefined && vis.max !== undefined && multiplier === 1.0 && offset === 0.0) {
+            queryUrl += `&vis_min=${vis.min}&vis_max=${vis.max}`;
           }
         }
 
@@ -2766,16 +2799,42 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
+      function getActiveLagAndWindow() {
+        const sel = document.getElementById("glm_temporal_window_select");
+        if (!sel || sel.value === "0:0") return { lagDays: 0, windowDays: 0 };
+        if (sel.value === "custom") {
+          const l = Math.max(0, parseInt(document.getElementById("glm_lag_days_input")?.value, 10) || 0);
+          const w = Math.max(0, parseInt(document.getElementById("glm_window_days_input")?.value, 10) || 0);
+          return { lagDays: l, windowDays: w };
+        }
+        const [lStr, wStr] = sel.value.split(":");
+        return {
+          lagDays: Math.max(0, parseInt(lStr, 10) || 0),
+          windowDays: Math.max(0, parseInt(wStr, 10) || 0)
+        };
+      }
+
+      function hasAnyTemporalGLMSelection() {
+        const presets = Array.from(document.querySelectorAll('input[name="glm_datasets"]:checked')).map(cb => cb.value);
+        if (presets.some(d => d !== "srtm")) return true;
+        const customChecked = Array.from(document.querySelectorAll('input[name="glm_custom_datasets"]:checked')).map(cb => cb.value);
+        return customChecked.some(id => glmCustomLayers.get(id)?.asset_type !== "Image");
+      }
+
       function setGLMDateExtractionMode(mode) {
         const dateRow = document.getElementById("glm_date_row");
         const banner = document.getElementById("glm_notice_banner");
+        const lagGroup = document.getElementById("glm_lag_window_group");
         const dataset = glmDatasetSelect.value;
-        const isSRTM = dataset === "srtm";
+        const customPreviewSpec = dataset.startsWith("custom:") ? glmCustomLayers.get(dataset.slice(7)) : null;
+        const isPreviewStatic = dataset === "srtm" || (customPreviewSpec && customPreviewSpec.asset_type === "Image");
+        const anyTemporal = hasAnyTemporalGLMSelection();
 
-        if (isSRTM) {
+        if (isPreviewStatic && !anyTemporal) {
           if (dateRow) dateRow.style.display = "none";
+          if (lagGroup) lagGroup.style.display = "none";
           if (banner) {
-            banner.textContent = "SRTM is a static elevation dataset and does not require a temporal date window.";
+            banner.textContent = "Selected dataset(s) are static layers and do not require a temporal date window.";
             banner.style.display = "block";
           }
           return;
@@ -2783,22 +2842,41 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (mode === "exact") {
           if (dateRow) dateRow.style.display = "none";
+          if (lagGroup) lagGroup.style.display = (anyTemporal || (dataset && !isPreviewStatic)) ? "block" : "none";
+          const { lagDays, windowDays } = getActiveLagAndWindow();
+          let winDesc = "each sample's exact collection date";
+          if (lagDays > 0 && windowDays > 0) {
+            winDesc = `the ${windowDays}-day window lagged by ${lagDays}d [t − ${lagDays + windowDays}d, t − ${lagDays}d] prior to each sample`;
+          } else if (windowDays > 0) {
+            winDesc = `the ${windowDays}-day prior window [t − ${windowDays}d, t] preceding each sample`;
+          } else if (lagDays > 0) {
+            winDesc = `${lagDays} days prior [t − ${lagDays}d] to each sample`;
+          }
           if (banner) {
-            if (glmParsedDatesSpan) {
-              banner.textContent = `Spreadsheet date column detected (spanning ${glmParsedDatesSpan.start} to ${glmParsedDatesSpan.end}). Covariates will be extracted for each point's exact sample date. Leaflet map is displaying the average over this temporal window.`;
-            } else {
-              banner.textContent = "Extracting covariates for each point's exact date column.";
-            }
+            const spanPrefix = glmParsedDatesSpan ? `Sample dates detected (${glmParsedDatesSpan.start} to ${glmParsedDatesSpan.end}). ` : "";
+            banner.textContent = `${spanPrefix}Extracting temporal covariates over ${winDesc}.`;
             banner.style.display = "block";
           }
         } else {
-          if (dateRow) dateRow.style.display = "block";
+          if (lagGroup) lagGroup.style.display = "none";
+          if (isPreviewStatic) {
+            if (dateRow) dateRow.style.display = anyTemporal ? "block" : "none";
+          } else {
+            if (dateRow) dateRow.style.display = "block";
+          }
           if (banner) {
-            banner.textContent = "Covariates will be extracted as the average over the manually selected date range below for all points.";
+            banner.textContent = "Covariates will be extracted as the composite over the manually selected date range for all locations.";
             banner.style.display = "block";
           }
-          if (dataset) {
+          if (customPreviewSpec && customPreviewSpec.asset_type !== "Image") {
+            const cStart = customPreviewSpec.start_date || "2000-01-01";
+            const cEnd = customPreviewSpec.end_date || getPastDate(1);
+            initDatasetSlider("custom", "glm", { start: cStart, end: cEnd });
+          } else if (dataset && !isPreviewStatic) {
             initDatasetSlider(dataset, "glm");
+          } else if (anyTemporal) {
+            const firstTempPreset = Array.from(document.querySelectorAll('input[name="glm_datasets"]:checked')).map(cb => cb.value).find(d => d !== "srtm");
+            if (firstTempPreset) initDatasetSlider(firstTempPreset, "glm");
           }
         }
       }
@@ -3225,23 +3303,37 @@ document.addEventListener("DOMContentLoaded", () => {
         return Array.from(document.querySelectorAll('input[name="glm_datasets"]:checked')).map(cb => cb.value);
       }
 
+      function getSelectedGLMCustomSpecs() {
+        return Array.from(document.querySelectorAll('input[name="glm_custom_datasets"]:checked'))
+          .map(cb => glmCustomLayers.get(cb.value))
+          .filter(Boolean);
+      }
+
+      function getAllSelectedGLMPreviewKeys() {
+        const presetKeys = getSelectedGLMDatasets();
+        const customKeys = Array.from(document.querySelectorAll('input[name="glm_custom_datasets"]:checked')).map(cb => `custom:${cb.value}`);
+        return [...presetKeys, ...customKeys];
+      }
+
       function updateGLMSubmitBtnState() {
-        const checked = getSelectedGLMDatasets();
+        const checkedPresets = getSelectedGLMDatasets();
+        const checkedCustoms = getSelectedGLMCustomSpecs();
+        const totalSelected = checkedPresets.length + checkedCustoms.length;
         const countSpan = document.getElementById("glm_selection_count");
         if (countSpan) {
-          countSpan.textContent = checked.length === 1 
+          countSpan.textContent = totalSelected === 1 
             ? "1 layer selected for extraction" 
-            : `${checked.length} layers selected for extraction`;
-          countSpan.style.color = checked.length > 0 ? "#58a6ff" : "#f85149";
+            : `${totalSelected} layers selected for extraction`;
+          countSpan.style.color = totalSelected > 0 ? "#58a6ff" : "#f85149";
         }
 
         const baseTitle = glmInputMode === "boundary" ? "Extract Boundary Covariates" : "Extract Point Covariates";
-        if (selectedGLMFile && checked.length > 0) {
+        if (selectedGLMFile && totalSelected > 0) {
           glmSubmitBtn.disabled = false;
           glmSubmitBtn.style.opacity = "1";
           glmSubmitBtn.style.cursor = "pointer";
-          glmSubmitBtn.textContent = checked.length > 1 
-            ? `${baseTitle} (${checked.length} Layers)` 
+          glmSubmitBtn.textContent = totalSelected > 1 
+            ? `${baseTitle} (${totalSelected} Layers)` 
             : baseTitle;
         } else {
           glmSubmitBtn.disabled = true;
@@ -3251,45 +3343,482 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
+      // Epidemiological lag & temporal window listeners
+      const glmTempWindowSelect = document.getElementById("glm_temporal_window_select");
+      const glmCustomLagRow = document.getElementById("glm_custom_lag_row");
+      const glmLagDaysInput = document.getElementById("glm_lag_days_input");
+      const glmWindowDaysInput = document.getElementById("glm_window_days_input");
+
+      if (glmTempWindowSelect) {
+        glmTempWindowSelect.addEventListener("change", () => {
+          if (glmCustomLagRow) {
+            glmCustomLagRow.style.display = glmTempWindowSelect.value === "custom" ? "grid" : "none";
+          }
+          const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "exact";
+          setGLMDateExtractionMode(dateMode);
+        });
+      }
+      [glmLagDaysInput, glmWindowDaysInput].forEach(inp => {
+        if (inp) {
+          inp.addEventListener("input", () => {
+            const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "exact";
+            setGLMDateExtractionMode(dateMode);
+          });
+        }
+      });
+
+      // =========================================================================
+      // Pipeline 2: Custom GEE Dataset Inspector & Multi-Layer Builder
+      // =========================================================================
+      const glmToggleCustomBtn = document.getElementById("glm_toggle_custom_btn");
+      const glmCloseCustomBtn = document.getElementById("glm_close_custom_btn");
+      const glmCustomPanel = document.getElementById("glm_custom_panel");
+      const glmCustomAssetInput = document.getElementById("glm_custom_asset");
+      const glmCustomLoadBtn = document.getElementById("glm_custom_load_btn");
+      const glmCustomError = document.getElementById("glm_custom_error");
+      const glmCustomConfig = document.getElementById("glm_custom_config");
+      const glmCustomMetaBadge = document.getElementById("glm_custom_meta_badge");
+      const glmCustomBandSelect = document.getElementById("glm_custom_band");
+      const glmCustomReducerGroup = document.getElementById("glm_custom_reducer_group");
+      const glmCustomReducerSelect = document.getElementById("glm_custom_reducer");
+      const glmCustomScalePreset = document.getElementById("glm_custom_scale_preset");
+      const glmCustomScalingRow = document.getElementById("glm_custom_scaling_row");
+      const glmCustomMultiplier = document.getElementById("glm_custom_multiplier");
+      const glmCustomOffset = document.getElementById("glm_custom_offset");
+      const glmCustomAddLayerBtn = document.getElementById("glm_custom_add_layer_btn");
+      const glmDatasetsListEl = document.getElementById("glm_datasets_list");
+
+      let inspectedGLMCustomMeta = null;
+
+      if (glmToggleCustomBtn && glmCustomPanel) {
+        glmToggleCustomBtn.addEventListener("click", () => {
+          const isHidden = glmCustomPanel.style.display === "none";
+          glmCustomPanel.style.display = isHidden ? "flex" : "none";
+          glmToggleCustomBtn.setAttribute("aria-expanded", String(isHidden));
+          if (isHidden && glmCustomAssetInput) glmCustomAssetInput.focus();
+        });
+      }
+
+      if (glmCloseCustomBtn && glmCustomPanel) {
+        glmCloseCustomBtn.addEventListener("click", () => {
+          glmCustomPanel.style.display = "none";
+          glmToggleCustomBtn?.setAttribute("aria-expanded", "false");
+        });
+      }
+
+      document.querySelectorAll(".glm-quick-chip").forEach(chip => {
+        chip.addEventListener("click", () => {
+          const aid = chip.dataset.asset;
+          if (aid && glmCustomAssetInput) {
+            glmCustomAssetInput.value = aid;
+            glmCustomLoadBtn?.click();
+          }
+        });
+      });
+
+      function applyGLMCustomBandCalibration() {
+        if (!inspectedGLMCustomMeta || !glmCustomBandSelect) return;
+        const bandObj = (inspectedGLMCustomMeta.bands || []).find(b => b.id === glmCustomBandSelect.value);
+        if (!bandObj) return;
+
+        const bLower = bandObj.id.toLowerCase();
+        const aLower = (inspectedGLMCustomMeta.asset_id || "").toLowerCase();
+        if (glmCustomReducerSelect && inspectedGLMCustomMeta.type !== "Image") {
+          if (bLower === "label" || bLower === "map" || bLower.includes("landcover") || bLower.includes("lc_") || aLower.includes("dynamicworld")) {
+            glmCustomReducerSelect.value = "mode";
+          } else {
+            glmCustomReducerSelect.value = "mean";
+          }
+        }
+
+        if (glmCustomScalePreset) {
+          glmCustomScalePreset.value = "recommended";
+          if (glmCustomScalingRow) glmCustomScalingRow.style.display = "none";
+          if (glmCustomMultiplier) glmCustomMultiplier.value = bandObj.scale ?? 1.0;
+          if (glmCustomOffset) glmCustomOffset.value = bandObj.offset ?? 0.0;
+        }
+      }
+
+      if (glmCustomBandSelect) {
+        glmCustomBandSelect.addEventListener("change", applyGLMCustomBandCalibration);
+      }
+
+      if (glmCustomScalePreset) {
+        glmCustomScalePreset.addEventListener("change", () => {
+          const val = glmCustomScalePreset.value;
+          const bandObj = (inspectedGLMCustomMeta?.bands || []).find(b => b.id === glmCustomBandSelect?.value);
+          if (val === "recommended") {
+            glmCustomMultiplier.value = bandObj?.scale ?? 1.0;
+            glmCustomOffset.value = bandObj?.offset ?? 0.0;
+            glmCustomScalingRow.style.display = "none";
+          } else if (val === "none") {
+            glmCustomMultiplier.value = 1.0;
+            glmCustomOffset.value = 0.0;
+            glmCustomScalingRow.style.display = "none";
+          } else if (val === "kelvin_to_celsius") {
+            glmCustomMultiplier.value = bandObj?.scale ?? 1.0;
+            glmCustomOffset.value = -273.15;
+            glmCustomScalingRow.style.display = "none";
+          } else if (val === "modis_scale_0001") {
+            glmCustomMultiplier.value = 0.0001;
+            glmCustomOffset.value = 0.0;
+            glmCustomScalingRow.style.display = "none";
+          } else if (val === "custom") {
+            glmCustomScalingRow.style.display = "grid";
+          }
+        });
+      }
+
+      if (glmCustomLoadBtn) {
+        glmCustomLoadBtn.addEventListener("click", async () => {
+          const assetId = glmCustomAssetInput?.value?.trim();
+          if (!assetId) {
+            if (glmCustomError) {
+              glmCustomError.textContent = "Please enter a Google Earth Engine Asset ID.";
+              glmCustomError.style.display = "block";
+            }
+            return;
+          }
+
+          glmCustomLoadBtn.disabled = true;
+          glmCustomLoadBtn.textContent = "Loading...";
+          if (glmCustomError) glmCustomError.style.display = "none";
+
+          try {
+            const res = await fetch(`${BACKEND_URL}/datasets/info?id=${encodeURIComponent(assetId)}`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || "Failed to inspect GEE asset.");
+
+            inspectedGLMCustomMeta = data;
+            if (glmCustomBandSelect) {
+              glmCustomBandSelect.innerHTML = "";
+              (data.bands || []).forEach(b => {
+                const opt = document.createElement("option");
+                opt.value = b.id;
+                let text = b.id;
+                if (b.description) text += ` — ${b.description}`;
+                if (b.units) text += ` (${b.units})`;
+                opt.textContent = text;
+                glmCustomBandSelect.appendChild(opt);
+              });
+            }
+
+            const resStr = data.resolution >= 1000 ? `${(data.resolution / 1000).toFixed(1).replace(/\.0$/, "")}km` : `${data.resolution}m`;
+            const spanStr = (data.type === "Image") ? "Static Image" : (data.start_date ? `${data.start_date} to ${data.end_date || "present"}` : "ImageCollection");
+            if (glmCustomMetaBadge) {
+              glmCustomMetaBadge.textContent = `${data.type} · ~${resStr} native · ${spanStr}`;
+            }
+
+            if (glmCustomReducerGroup) {
+              glmCustomReducerGroup.style.display = data.type === "Image" ? "none" : "block";
+            }
+            if (glmCustomConfig) glmCustomConfig.style.display = "flex";
+            applyGLMCustomBandCalibration();
+          } catch (err) {
+            inspectedGLMCustomMeta = null;
+            if (glmCustomConfig) glmCustomConfig.style.display = "none";
+            if (glmCustomError) {
+              glmCustomError.textContent = err.message;
+              glmCustomError.style.display = "block";
+            }
+          } finally {
+            glmCustomLoadBtn.disabled = false;
+            glmCustomLoadBtn.textContent = "Inspect";
+          }
+        });
+      }
+
+      function selectPreviewKey(previewKey) {
+        const targetRadio = document.querySelector(`input[name="glm_preview_dataset"][value="${previewKey}"]`);
+        if (targetRadio) targetRadio.checked = true;
+        if (glmDatasetSelect) {
+          if (previewKey && !glmDatasetSelect.querySelector(`option[value="${previewKey}"]`)) {
+            const opt = document.createElement("option");
+            opt.value = previewKey;
+            opt.textContent = previewKey;
+            glmDatasetSelect.appendChild(opt);
+          }
+          glmDatasetSelect.value = previewKey || "";
+          glmDatasetSelect.dispatchEvent(new Event("change"));
+        }
+      }
+
+      if (glmCustomAddLayerBtn) {
+        glmCustomAddLayerBtn.addEventListener("click", () => {
+          if (!inspectedGLMCustomMeta || !glmDatasetsListEl) return;
+          const bandId = glmCustomBandSelect?.value || inspectedGLMCustomMeta.bands?.[0]?.id || "band1";
+          const bandObj = (inspectedGLMCustomMeta.bands || []).find(b => b.id === bandId);
+          const assetId = inspectedGLMCustomMeta.asset_id;
+          const assetType = inspectedGLMCustomMeta.type || "ImageCollection";
+          const tempReducer = assetType === "Image" ? "none" : (glmCustomReducerSelect?.value || "mean");
+          const mult = parseFloat(glmCustomMultiplier?.value);
+          const off = parseFloat(glmCustomOffset?.value);
+
+          const customId = `custom_${++glmCustomCounter}`;
+          const previewVal = `custom:${customId}`;
+          const spec = {
+            id: customId,
+            asset_id: assetId,
+            asset_type: assetType,
+            band: bandId,
+            temporal_reducer: tempReducer,
+            multiplier: Number.isFinite(mult) ? mult : 1.0,
+            offset: Number.isFinite(off) ? off : 0.0,
+            resolution: inspectedGLMCustomMeta.resolution || 1000,
+            start_date: inspectedGLMCustomMeta.start_date || null,
+            end_date: inspectedGLMCustomMeta.end_date || null,
+            vis: bandObj?.vis || null
+          };
+          glmCustomLayers.set(customId, spec);
+
+          const shortParts = assetId.split("/").filter(Boolean);
+          const shortTitle = shortParts.length >= 2 ? shortParts.slice(-2).join("/") : assetId;
+          const resLabel = spec.resolution >= 1000 ? `~${(spec.resolution / 1000).toFixed(1).replace(/\.0$/, "")}km` : `${spec.resolution}m`;
+          const cadenceLabel = assetType === "Image" ? "Static" : tempReducer;
+
+          const rowLabel = document.createElement("label");
+          rowLabel.className = "glm-dataset-item";
+          rowLabel.dataset.customRowId = customId;
+          rowLabel.style.cssText = "display: flex; align-items: center; justify-content: space-between; padding: 0.35rem 0.5rem; border-radius: 4px; cursor: pointer; transition: background 0.15s; gap: 0.35rem;";
+          rowLabel.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 0.45rem; min-width: 0;">
+              <input type="checkbox" name="glm_custom_datasets" value="${customId}" checked>
+              <span class="glm-custom-badge">GEE</span>
+              <span style="font-size: 0.82rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtmlString(assetId)} [${escapeHtmlString(bandId)}]">${escapeHtmlString(shortTitle)} · ${escapeHtmlString(bandId)}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0;">
+              <span style="font-size: 0.7rem; color: #8b949e; font-family: monospace;">${resLabel} · ${escapeHtmlString(cadenceLabel)}</span>
+              <input type="radio" name="glm_preview_dataset" value="${previewVal}" title="Preview Custom Layer on Map" style="cursor: pointer;">
+              <button type="button" class="glm-remove-custom-btn" title="Remove layer" aria-label="Remove custom layer">&times;</button>
+            </div>
+          `;
+
+          const cb = rowLabel.querySelector('input[name="glm_custom_datasets"]');
+          const rb = rowLabel.querySelector('input[name="glm_preview_dataset"]');
+          const removeBtn = rowLabel.querySelector(".glm-remove-custom-btn");
+
+          cb.addEventListener("change", () => {
+            updateGLMSubmitBtnState();
+            const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "exact";
+            setGLMDateExtractionMode(dateMode);
+            const currentPrev = document.querySelector('input[name="glm_preview_dataset"]:checked');
+            if (cb.checked && (!currentPrev || !currentPrev.value)) {
+              selectPreviewKey(previewVal);
+            } else if (!cb.checked && currentPrev && currentPrev.value === previewVal) {
+              const allRemaining = getAllSelectedGLMPreviewKeys();
+              if (allRemaining.length > 0) {
+                selectPreviewKey(allRemaining[0]);
+              } else {
+                const noneRadio = document.getElementById("glm_preview_none");
+                if (noneRadio) noneRadio.checked = true;
+                selectPreviewKey("");
+                if (currentEELayer) {
+                  map.removeLayer(currentEELayer);
+                  currentEELayer = null;
+                }
+              }
+            }
+          });
+
+          rb.addEventListener("change", () => {
+            activePipeline = "discrete";
+            if (!cb.checked) {
+              cb.checked = true;
+              updateGLMSubmitBtnState();
+            }
+            selectPreviewKey(previewVal);
+          });
+
+          removeBtn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const wasPreviewed = document.querySelector('input[name="glm_preview_dataset"]:checked')?.value === previewVal;
+            glmCustomLayers.delete(customId);
+            rowLabel.remove();
+            const optToRemove = glmDatasetSelect?.querySelector(`option[value="${previewVal}"]`);
+            if (optToRemove) optToRemove.remove();
+            updateGLMSubmitBtnState();
+            const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "exact";
+            setGLMDateExtractionMode(dateMode);
+            if (wasPreviewed) {
+              const allRemaining = getAllSelectedGLMPreviewKeys();
+              if (allRemaining.length > 0) {
+                selectPreviewKey(allRemaining[0]);
+              } else {
+                const noneRadio = document.getElementById("glm_preview_none");
+                if (noneRadio) noneRadio.checked = true;
+                selectPreviewKey("");
+                if (currentEELayer) {
+                  map.removeLayer(currentEELayer);
+                  currentEELayer = null;
+                }
+              }
+            }
+          });
+
+          glmDatasetsListEl.appendChild(rowLabel);
+          glmDatasetsListEl.scrollTop = glmDatasetsListEl.scrollHeight;
+
+          activePipeline = "discrete";
+          updateGLMSubmitBtnState();
+          const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "exact";
+          setGLMDateExtractionMode(dateMode);
+
+          // Automatically preview the newly added custom layer on the map
+          selectPreviewKey(previewVal);
+        });
+      }
+
+      // =========================================================================
+      // One-Click Reviewer Demo Datasets (Pipeline 1 & Pipeline 2)
+      // =========================================================================
+      const mapLoadDemoBtn = document.getElementById("map_load_demo_btn");
+      if (mapLoadDemoBtn) {
+        mapLoadDemoBtn.addEventListener("click", () => {
+          activePipeline = "continuous";
+          const uploadRadio = document.querySelector('input[name="roi_type"][value="bbox_upload"]');
+          if (uploadRadio) {
+            uploadRadio.checked = true;
+            uploadRadio.dispatchEvent(new Event("change"));
+          }
+          const demoTreeText = `#NEXUS
+Begin trees;
+tree STATE_0 = (((Taxon_ZA_CPT1[&location={-33.9249,18.4241}]:1.2,Taxon_ZA_STB2[&location={-33.9321,18.8602}]:1.1)[&location={-33.75,19.10}]:2.4,(Taxon_ZA_DBN1[&location={-29.8587,31.0218}]:1.5,Taxon_ZA_PMB2[&location={-29.6006,30.3794}]:1.4)[&location={-29.95,30.65}]:2.1)[&location={-28.50,27.20}]:3.1,((Taxon_ZA_JHB1[&location={-26.2041,28.0473}]:0.9,Taxon_ZA_PTA2[&location={-25.7479,28.2293}]:0.8)[&location={-25.95,28.12}]:1.9,(Taxon_MZ_MPM1[&location={-25.9692,32.5732}]:1.3,Taxon_SZ_MBN1[&location={-26.3054,31.1367}]:1.2)[&location={-26.15,31.85}]:1.8)[&location={-26.05,29.90}]:2.8)[&location={-27.40,28.50}];
+End;`;
+          const pts = parseBeastCoordinates(demoTreeText);
+          uploadedPoints = pts;
+          const statusEl = document.getElementById("map_upload_status");
+          if (statusEl) {
+            statusEl.style.display = "block";
+            statusEl.style.color = "var(--accent-secondary)";
+            statusEl.textContent = `Demo tree loaded (${pts.length} phylogeographic nodes across Southern Africa).`;
+          }
+          if (datasetSelect && !datasetSelect.value) {
+            datasetSelect.value = "chirps";
+            datasetSelect.dispatchEvent(new Event("change"));
+          }
+          renderUploadedDataOnMap(map, pts, false);
+        });
+      }
+
+      const glmLoadDemoBtn = document.getElementById("glm_load_demo_btn");
+      if (glmLoadDemoBtn) {
+        glmLoadDemoBtn.addEventListener("click", () => {
+          activePipeline = "discrete";
+          // Ensure core demo presets are checked
+          ["chirps", "era5_land_monthly", "srtm"].forEach(presetKey => {
+            const cb = document.querySelector(`input[name="glm_datasets"][value="${presetKey}"]`);
+            if (cb) cb.checked = true;
+          });
+
+          if (glmInputMode === "boundary") {
+            const demoGeoJSON = {
+              type: "FeatureCollection",
+              features: [
+                {
+                  type: "Feature",
+                  properties: { NAME_1: "Western_Cape", ISO: "ZAF" },
+                  geometry: { type: "Polygon", coordinates: [[[18.2, -34.4], [20.8, -34.4], [20.8, -32.6], [18.2, -32.6], [18.2, -34.4]]] }
+                },
+                {
+                  type: "Feature",
+                  properties: { NAME_1: "KwaZulu_Natal", ISO: "ZAF" },
+                  geometry: { type: "Polygon", coordinates: [[[29.5, -30.8], [32.2, -30.8], [32.2, -27.8], [29.5, -27.8], [29.5, -30.8]]] }
+                },
+                {
+                  type: "Feature",
+                  properties: { NAME_1: "Gauteng", ISO: "ZAF" },
+                  geometry: { type: "Polygon", coordinates: [[[27.3, -26.7], [29.1, -26.7], [29.1, -25.2], [27.3, -25.2], [27.3, -26.7]]] }
+                },
+                {
+                  type: "Feature",
+                  properties: { NAME_1: "Maputo_Province", ISO: "MOZ" },
+                  geometry: { type: "Polygon", coordinates: [[[31.9, -26.8], [33.0, -26.8], [33.0, -25.0], [31.9, -25.0], [31.9, -26.8]]] }
+                }
+              ]
+            };
+            const jsonStr = JSON.stringify(demoGeoJSON, null, 2);
+            const demoFile = new File([jsonStr], "demo_southern_africa_demes.geojson", { type: "application/geo+json" });
+            selectedGLMFile = demoFile;
+            selectedGLMFileToSend = demoFile;
+            selectedShapefileLayer = null;
+
+            glmUploadText.textContent = "Demo Loaded: demo_southern_africa_demes.geojson";
+            glmUploadStatus.textContent = "Loaded 4 administrative boundary polygons (Western_Cape, KwaZulu_Natal, Gauteng, Maputo_Province).";
+            glmUploadStatus.style.color = "#3fb950";
+            glmUploadStatus.style.display = "block";
+
+            renderGLMPolygonsOnMap(demoGeoJSON);
+
+            const modeGroup = document.getElementById("glm_mode_group");
+            const exactRadio = document.querySelector('input[name="glm_date_mode"][value="exact"]');
+            const rangeRadio = document.querySelector('input[name="glm_date_mode"][value="range"]');
+            if (modeGroup) modeGroup.style.display = "block";
+            if (exactRadio) exactRadio.disabled = true;
+            if (rangeRadio) rangeRadio.checked = true;
+
+            const matrixOptionsGroup = document.getElementById("glm_matrix_options_group");
+            const matrixCheckbox = document.getElementById("glm_generate_matrices_checkbox");
+            const matrixSettings = document.getElementById("glm_matrix_settings");
+            const locationSelect = document.getElementById("glm_location_col_select");
+            const locationHint = document.getElementById("glm_detected_locations_hint");
+            if (matrixOptionsGroup && locationSelect) {
+              matrixOptionsGroup.style.display = "block";
+              locationSelect.innerHTML = '<option value="NAME_1" selected>NAME_1</option><option value="ISO">ISO</option>';
+              if (matrixCheckbox) matrixCheckbox.checked = true;
+              if (matrixSettings) matrixSettings.style.display = "flex";
+              if (locationHint) {
+                locationHint.textContent = "Found 4 discrete locations (Western_Cape, KwaZulu_Natal, Gauteng, Maputo_Province)";
+                locationHint.style.color = "#3fb950";
+              }
+            }
+            updateGLMSubmitBtnState();
+            selectPreviewKey("chirps");
+            setGLMDateExtractionMode("range");
+          } else {
+            const demoCSV = [
+              "sample_id,latitude,longitude,date,location",
+              "Sample_CPT_01,-33.9249,18.4241,2021-03-15,Cape_Town",
+              "Sample_CPT_02,-33.9321,18.8602,2021-04-02,Cape_Town",
+              "Sample_CPT_03,-34.0500,18.6300,2021-05-19,Cape_Town",
+              "Sample_DBN_01,-29.8587,31.0218,2021-06-11,Durban",
+              "Sample_DBN_02,-29.6006,30.3794,2021-07-24,Durban",
+              "Sample_DBN_03,-29.7800,30.8900,2021-08-30,Durban",
+              "Sample_JHB_01,-26.2041,28.0473,2021-09-14,Johannesburg",
+              "Sample_JHB_02,-25.7479,28.2293,2021-10-08,Johannesburg",
+              "Sample_JHB_03,-26.1076,28.0567,2021-11-21,Johannesburg",
+              "Sample_MPM_01,-25.9692,32.5732,2022-01-12,Maputo",
+              "Sample_MPM_02,-25.8900,32.6100,2022-02-18,Maputo",
+              "Sample_MPM_03,-26.0200,32.4800,2022-03-05,Maputo"
+            ].join("\n");
+            const demoFile = new File([demoCSV], "demo_phylocov_samples.csv", { type: "text/csv" });
+            handleGLMFileSelection(demoFile);
+            selectPreviewKey("chirps");
+          }
+        });
+      }
+
       // Checkbox changes for multi-dataset selection
       document.querySelectorAll('input[name="glm_datasets"]').forEach(cb => {
         cb.addEventListener("change", () => {
           updateGLMSubmitBtnState();
+          const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "exact";
+          setGLMDateExtractionMode(dateMode);
           const previewRadio = document.querySelector('input[name="glm_preview_dataset"]:checked');
-          const checked = getSelectedGLMDatasets();
+          const allRemaining = getAllSelectedGLMPreviewKeys();
           
           if (cb.checked) {
-            // If no preview is currently selected, set preview to this newly checked dataset
             if (!previewRadio || !previewRadio.value) {
-              const myRadio = document.querySelector(`input[name="glm_preview_dataset"][value="${cb.value}"]`);
-              if (myRadio) {
-                myRadio.checked = true;
-                if (glmDatasetSelect) {
-                  glmDatasetSelect.value = cb.value;
-                  glmDatasetSelect.dispatchEvent(new Event("change"));
-                }
-              }
+              selectPreviewKey(cb.value);
             }
           } else {
-            // If user unchecked the dataset currently being previewed
             if (previewRadio && previewRadio.value === cb.value) {
-              if (checked.length > 0) {
-                const nextRadio = document.querySelector(`input[name="glm_preview_dataset"][value="${checked[0]}"]`);
-                if (nextRadio) {
-                  nextRadio.checked = true;
-                  if (glmDatasetSelect) {
-                    glmDatasetSelect.value = checked[0];
-                    glmDatasetSelect.dispatchEvent(new Event("change"));
-                  }
-                }
+              if (allRemaining.length > 0) {
+                selectPreviewKey(allRemaining[0]);
               } else {
-                // Revert to no preview
                 const noneRadio = document.getElementById("glm_preview_none");
                 if (noneRadio) noneRadio.checked = true;
-                if (glmDatasetSelect) {
-                  glmDatasetSelect.value = "";
-                  glmDatasetSelect.dispatchEvent(new Event("change"));
-                }
+                selectPreviewKey("");
                 if (currentEELayer) {
                   map.removeLayer(currentEELayer);
                   currentEELayer = null;
@@ -3306,11 +3835,7 @@ document.addEventListener("DOMContentLoaded", () => {
           activePipeline = "discrete";
           const val = e.target.value;
           if (!val) {
-            // No preview selected
-            if (glmDatasetSelect) {
-              glmDatasetSelect.value = "";
-              glmDatasetSelect.dispatchEvent(new Event("change"));
-            }
+            selectPreviewKey("");
             if (currentEELayer) {
               map.removeLayer(currentEELayer);
               currentEELayer = null;
@@ -3322,10 +3847,7 @@ document.addEventListener("DOMContentLoaded", () => {
             correspondingCb.checked = true;
             updateGLMSubmitBtnState();
           }
-          if (glmDatasetSelect) {
-            glmDatasetSelect.value = val;
-            glmDatasetSelect.dispatchEvent(new Event("change"));
-          }
+          selectPreviewKey(val);
         });
       });
 
@@ -3334,35 +3856,29 @@ document.addEventListener("DOMContentLoaded", () => {
       const clearAllBtn = document.getElementById("glm_clear_all_btn");
       if (selectAllBtn) {
         selectAllBtn.addEventListener("click", () => {
-          document.querySelectorAll('input[name="glm_datasets"]').forEach(cb => cb.checked = true);
+          document.querySelectorAll('input[name="glm_datasets"], input[name="glm_custom_datasets"]').forEach(cb => cb.checked = true);
           updateGLMSubmitBtnState();
+          const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "exact";
+          setGLMDateExtractionMode(dateMode);
           const previewRadio = document.querySelector('input[name="glm_preview_dataset"]:checked');
           if (!previewRadio || !previewRadio.value) {
-            const firstRadio = document.querySelector('input[name="glm_preview_dataset"][value="chirps"]');
-            if (firstRadio) {
-              firstRadio.checked = true;
-              if (glmDatasetSelect) {
-                glmDatasetSelect.value = "chirps";
-                glmDatasetSelect.dispatchEvent(new Event("change"));
-              }
-            }
+            selectPreviewKey("chirps");
           }
         });
       }
       if (clearAllBtn) {
         clearAllBtn.addEventListener("click", () => {
-          document.querySelectorAll('input[name="glm_datasets"]').forEach(cb => cb.checked = false);
+          document.querySelectorAll('input[name="glm_datasets"], input[name="glm_custom_datasets"]').forEach(cb => cb.checked = false);
           const noneRadio = document.getElementById("glm_preview_none");
           if (noneRadio) noneRadio.checked = true;
-          if (glmDatasetSelect) {
-            glmDatasetSelect.value = "";
-            glmDatasetSelect.dispatchEvent(new Event("change"));
-          }
+          selectPreviewKey("");
           if (currentEELayer) {
             map.removeLayer(currentEELayer);
             currentEELayer = null;
           }
           updateGLMSubmitBtnState();
+          const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "exact";
+          setGLMDateExtractionMode(dateMode);
         });
       }
 
@@ -3461,11 +3977,13 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!selectedGLMFileToSend) return;
 
         const checkedDatasets = getSelectedGLMDatasets();
-        if (checkedDatasets.length === 0) return;
+        const checkedCustomSpecs = getSelectedGLMCustomSpecs();
+        const totalLayersCount = checkedDatasets.length + checkedCustomSpecs.length;
+        if (totalLayersCount === 0) return;
 
-        // Check if all selected datasets are completely disjoint from sample coordinates
+        // Check if all selected preset datasets are completely disjoint (only when no custom datasets are included)
         const roiBounds = getActiveROIBounds();
-        if (roiBounds) {
+        if (roiBounds && checkedCustomSpecs.length === 0 && checkedDatasets.length > 0) {
           const allOutside = checkedDatasets.every(d => checkSpatialCoverage(roiBounds, d).status === "outside");
           if (allOutside) {
             glmStatusPanel.style.display = "block";
@@ -3473,17 +3991,20 @@ document.addEventListener("DOMContentLoaded", () => {
             glmStatusText.textContent = "BLOCKED";
             glmStatusMessage.textContent = `Extraction blocked: The selected dataset(s) (${checkedDatasets.map(d => d.toUpperCase()).join(", ")}) fall completely outside the uploaded sample extent. Please select a dataset with coverage for this region (e.g. ERA5).`;
             glmSubmitBtn.disabled = false;
-            glmSubmitBtn.textContent = "Extract Covariates";
-            glmSubmitBtn.style.opacity = "1";
-            glmSubmitBtn.style.cursor = "pointer";
+            updateGLMSubmitBtnState();
             if (glmCancelBtn) glmCancelBtn.style.display = "none";
             return;
           }
         }
 
+        const allLayerNames = [
+          ...checkedDatasets,
+          ...checkedCustomSpecs.map(cs => `${cs.asset_id.split("/").slice(-1)[0]}[${cs.band}]`)
+        ];
+
         // Prepare UI for loading
         glmSubmitBtn.disabled = true;
-        glmSubmitBtn.textContent = `Extracting ${checkedDatasets.length} Layer${checkedDatasets.length > 1 ? 's' : ''}...`;
+        glmSubmitBtn.textContent = `Extracting ${totalLayersCount} Layer${totalLayersCount > 1 ? 's' : ''}...`;
         glmSubmitBtn.style.opacity = "0.5";
         glmSubmitBtn.style.cursor = "not-allowed";
         if (glmCancelBtn) glmCancelBtn.style.display = "block";
@@ -3491,19 +4012,24 @@ document.addEventListener("DOMContentLoaded", () => {
         glmStatusPanel.style.display = "block";
         glmStatusDot.style.backgroundColor = "#58a6ff";
         glmStatusText.textContent = "EXTRACTING";
-        glmStatusMessage.textContent = `Uploading data and querying GEE across ${checkedDatasets.length} covariate layer${checkedDatasets.length > 1 ? 's' : ''} (${checkedDatasets.join(', ')})...`;
+        glmStatusMessage.textContent = `Uploading data and querying GEE across ${totalLayersCount} covariate layer${totalLayersCount > 1 ? 's' : ''} (${allLayerNames.join(', ')})...`;
         glmDownloadContainer.style.display = "none";
 
         const formData = new FormData();
         formData.append("file", selectedGLMFileToSend);
-        formData.append("datasets", checkedDatasets.join(","));
-        formData.append("dataset", checkedDatasets[0]); // legacy fallback
+        if (checkedDatasets.length > 0) {
+          formData.append("datasets", checkedDatasets.join(","));
+          formData.append("dataset", checkedDatasets[0]); // legacy fallback
+        }
+        if (checkedCustomSpecs.length > 0) {
+          formData.append("custom_datasets", JSON.stringify(checkedCustomSpecs));
+        }
         if (selectedShapefileLayer) {
           formData.append("layer_name", selectedShapefileLayer);
         }
 
         const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
-        const hasTemporal = checkedDatasets.some(d => d !== "srtm");
+        const hasTemporal = checkedDatasets.some(d => d !== "srtm") || checkedCustomSpecs.some(cs => cs.asset_type !== "Image");
         if (dateMode === "range" && hasTemporal) {
           const startVal = document.getElementById("glm_start_date").value;
           const endVal = document.getElementById("glm_end_date").value;
@@ -3511,6 +4037,10 @@ document.addEventListener("DOMContentLoaded", () => {
             formData.append("start_date", startVal);
             formData.append("end_date", endVal);
           }
+        } else if (dateMode === "exact" && hasTemporal) {
+          const { lagDays, windowDays } = getActiveLagAndWindow();
+          if (lagDays > 0) formData.append("lag_days", String(lagDays));
+          if (windowDays > 0) formData.append("window_days", String(windowDays));
         }
 
         const generateMatricesCheckbox = document.getElementById("glm_generate_matrices_checkbox");
@@ -3554,7 +4084,11 @@ document.addEventListener("DOMContentLoaded", () => {
           // Configure download link
           glmDownloadLink.href = downloadUrl;
           const origStem = selectedGLMFile.name.substring(0, selectedGLMFile.name.lastIndexOf('.')) || "samples";
-          const dsTag = checkedDatasets.length > 2 ? `multi_${checkedDatasets.length}_covariates` : checkedDatasets.join("_and_");
+          const tagTokens = [
+            ...checkedDatasets,
+            ...checkedCustomSpecs.map(cs => cs.band.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase())
+          ];
+          const dsTag = totalLayersCount > 2 ? `multi_${totalLayersCount}_covariates` : tagTokens.join("_and_");
           if (isZip) {
             glmDownloadLink.download = `beast_glm_${dsTag}_${origStem}.zip`;
             glmDownloadLink.textContent = "Download BEAST GLM Package (.zip)";
@@ -3570,10 +4104,10 @@ document.addEventListener("DOMContentLoaded", () => {
           glmStatusDot.style.backgroundColor = "#238636";
           glmStatusText.textContent = "COMPLETED";
           glmStatusMessage.textContent = isZip 
-            ? `BEAST GLM predictor package (.zip) successfully generated with pairwise matrices across ${checkedDatasets.length} covariate layer${checkedDatasets.length > 1 ? 's' : ''}!` 
+            ? `BEAST GLM predictor package (.zip) successfully generated with pairwise matrices across ${totalLayersCount} covariate layer${totalLayersCount > 1 ? 's' : ''}!` 
             : (glmInputMode === "boundary"
-              ? `Boundary zonal covariate extraction (${chosenAggregation}) successfully completed across ${checkedDatasets.length} layer${checkedDatasets.length > 1 ? 's' : ''}!`
-              : `Point covariate extraction successfully completed across ${checkedDatasets.length} layer${checkedDatasets.length > 1 ? 's' : ''}!`);
+              ? `Boundary zonal covariate extraction (${chosenAggregation}) successfully completed across ${totalLayersCount} layer${totalLayersCount > 1 ? 's' : ''}!`
+              : `Point covariate extraction successfully completed across ${totalLayersCount} layer${totalLayersCount > 1 ? 's' : ''}!`);
           glmDownloadContainer.style.display = "block";
 
         } catch (error) {
@@ -3994,23 +4528,69 @@ Export.image.toDrive({
       function generateDiscreteScript(lang) {
         const checkedInputs = Array.from(document.querySelectorAll('#glm_datasets_list input[name="glm_datasets"]:checked'));
         const checkedDatasets = checkedInputs.map(el => el.value);
-        if (checkedDatasets.length === 0) checkedDatasets.push("chirps");
+        const checkedCustomSpecs = getSelectedGLMCustomSpecs();
+        if (checkedDatasets.length === 0 && checkedCustomSpecs.length === 0) checkedDatasets.push("chirps");
 
         const dateMode = document.querySelector('input[name="glm_date_mode"]:checked')?.value || "range";
         const startDate = document.getElementById("glm_start_date")?.value || "2020-01-01";
         const endDate = document.getElementById("glm_end_date")?.value || "2020-12-31";
-        const scale = Math.min(...checkedDatasets.map(d => datasetMetadata[d]?.res || 5000));
+        const { lagDays, windowDays } = getActiveLagAndWindow();
+        const allResolutions = [
+          ...checkedDatasets.map(d => datasetMetadata[d]?.res || 5000),
+          ...checkedCustomSpecs.map(cs => cs.resolution || 1000)
+        ];
+        const scale = Math.min(...allResolutions);
         const zonalStat = glmInputMode === "boundary"
           ? (document.getElementById("glm_zonal_stat_select")?.value || "mean")
           : (document.getElementById("glm_aggregation_select")?.value || "mean");
         const nowIso = new Date().toISOString().split("T")[0];
+        const allLayersDesc = [
+          ...checkedDatasets,
+          ...checkedCustomSpecs.map(cs => `${cs.asset_id}[${cs.band}]`)
+        ].join(", ");
+        const dateModeDesc = dateMode === "exact"
+          ? `EXACT SAMPLE DATES (lag=${lagDays}d, window=${windowDays}d)`
+          : `RANGE (${startDate} to ${endDate})`;
+
+        const customVarEntries = checkedCustomSpecs.map((cs, idx) => {
+          const safeVar = `custom_${idx + 1}_${cs.band.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase()}`;
+          return { cs, safeVar };
+        });
 
         if (lang === "python") {
+          const presetBlocksPy = checkedDatasets.map(d => {
+            const p = PRESETS[d] || {};
+            if (d === "srtm") {
+              return `# Topography (SRTM)
+srtm_img = ee.Image('${p.asset || "USGS/SRTMGL1_003"}').select(['elevation'], ['srtm_elevation'])
+layer_images.append(srtm_img)`;
+            }
+            return `# ${d.toUpperCase()} Composite
+${d}_col = ee.ImageCollection('${p.asset || "UCSB-CHG/CHIRPS/DAILY"}').filterDate('${startDate}', '${endDate}').select(['${p.band || "precipitation"}'])
+${d}_img = ${d}_col.${p.reducer || "mean"}()${p.multiplier && p.multiplier !== 1 ? `.multiply(${p.multiplier})` : ""}${p.offset ? `.add(${p.offset})` : ""}.rename('${d}_${p.band || "val"}')
+layer_images.append(${d}_img)`;
+          });
+
+          const customBlocksPy = customVarEntries.map(({ cs, safeVar }) => {
+            const multPy = cs.multiplier && cs.multiplier !== 1 ? `.multiply(${cs.multiplier})` : "";
+            const offPy = cs.offset ? `.add(${cs.offset})` : "";
+            if (cs.asset_type === "Image") {
+              return `# Custom Static GEE Asset (${cs.asset_id})
+${safeVar}_img = ee.Image('${cs.asset_id}').select(['${cs.band}'])${multPy}${offPy}.rename('${safeVar}')
+layer_images.append(${safeVar}_img)`;
+            }
+            const redExpr = cs.temporal_reducer === "mode" ? `.reduce(ee.Reducer.mode())` : `.${cs.temporal_reducer || "mean"}()`;
+            return `# Custom GEE ImageCollection (${cs.asset_id})
+${safeVar}_col = ee.ImageCollection('${cs.asset_id}').filterDate('${startDate}', '${endDate}').select(['${cs.band}'])
+${safeVar}_img = ${safeVar}_col${redExpr}${multPy}${offPy}.rename('${safeVar}')
+layer_images.append(${safeVar}_img)`;
+          });
+
           return `"""
 PhyloCov Explorer - Reproducible Earth Engine Pipeline Script
 Pipeline: Discrete Covariate Extraction for GLM / Phylogeography
-Layers: ${checkedDatasets.join(", ")}
-Date Mode: ${dateMode.toUpperCase()} (${startDate} to ${endDate})
+Layers: ${allLayersDesc}
+Date Mode: ${dateModeDesc}
 Scale: ${scale}m | Aggregation: ${zonalStat}
 Generated: ${nowIso}
 """
@@ -4044,18 +4624,7 @@ points = ee.FeatureCollection(features)
 # 3. Prepare Covariate Layers
 layer_images = []
 
-${checkedDatasets.map(d => {
-  const p = PRESETS[d] || {};
-  if (d === "srtm") {
-    return `# Topography (SRTM)
-srtm_img = ee.Image('${p.asset || "USGS/SRTMGL1_003"}').select(['elevation'], ['srtm_elevation'])
-layer_images.append(srtm_img)`;
-  }
-  return `# ${d.toUpperCase()} Composite
-${d}_col = ee.ImageCollection('${p.asset || "UCSB-CHG/CHIRPS/DAILY"}').filterDate('${startDate}', '${endDate}').select(['${p.band || "precipitation"}'])
-${d}_img = ${d}_col.${p.reducer || "mean"}()${p.multiplier && p.multiplier !== 1 ? `.multiply(${p.multiplier})` : ""}${p.offset ? `.add(${p.offset})` : ""}.rename('${d}_${p.band || "val"}')
-layer_images.append(${d}_img)`;
-}).join("\n\n")}
+${[...presetBlocksPy, ...customBlocksPy].join("\n\n")}
 
 # Combine all layers into a single multi-band image
 stacked_covariates = ee.Image.cat(layer_images)
@@ -4081,11 +4650,44 @@ print(f"Extraction task submitted! Task ID: {task.id}")
 print("Monitor progress at: https://code.earthengine.google.com/tasks")
 `;
         } else if (lang === "r") {
+          const presetBlocksR = checkedDatasets.map(d => {
+            const p = PRESETS[d] || {};
+            if (d === "srtm") {
+              return `img_${d} <- ee$Image('${p.asset || "USGS/SRTMGL1_003"}')$select('elevation')$rename('srtm_elevation')`;
+            }
+            const multChain = p.multiplier && p.multiplier !== 1 ? `$\n  multiply(${p.multiplier})` : "";
+            const offChain = p.offset ? `$\n  add(${p.offset})` : "";
+            return `img_${d} <- ee$ImageCollection('${p.asset || "UCSB-CHG/CHIRPS/DAILY"}')$
+  filterDate('${startDate}', '${endDate}')$
+  select('${p.band || "precipitation"}')$
+  ${p.reducer || "mean"}()${multChain}${offChain}$
+  rename('${d}_${p.band || "val"}')`;
+          });
+
+          const customBlocksR = customVarEntries.map(({ cs, safeVar }) => {
+            const multChain = cs.multiplier && cs.multiplier !== 1 ? `$\n  multiply(${cs.multiplier})` : "";
+            const offChain = cs.offset ? `$\n  add(${cs.offset})` : "";
+            if (cs.asset_type === "Image") {
+              return `img_${safeVar} <- ee$Image('${cs.asset_id}')$select('${cs.band}')${multChain}${offChain}$rename('${safeVar}')`;
+            }
+            const redExpr = cs.temporal_reducer === "mode" ? `reduce(ee$Reducer$mode())` : `${cs.temporal_reducer || "mean"}()`;
+            return `img_${safeVar} <- ee$ImageCollection('${cs.asset_id}')$
+  filterDate('${startDate}', '${endDate}')$
+  select('${cs.band}')$
+  ${redExpr}${multChain}${offChain}$
+  rename('${safeVar}')`;
+          });
+
+          const allImgVarsR = [
+            ...checkedDatasets.map(d => `img_${d}`),
+            ...customVarEntries.map(({ safeVar }) => `img_${safeVar}`)
+          ];
+
           return `# ==============================================================================
 # PhyloCov Explorer - Reproducible Earth Engine Pipeline Script
 # Pipeline: Discrete Covariate Extraction for GLM / Phylogeography
-# Layers: ${checkedDatasets.join(", ")}
-# Date Mode: ${dateMode.toUpperCase()} (${startDate} to ${endDate})
+# Layers: ${allLayersDesc}
+# Date Mode: ${dateModeDesc}
 # Generated: ${nowIso}
 # ==============================================================================
 
@@ -4108,21 +4710,9 @@ features <- apply(sample_points, 1, function(row) {
 points <- ee$FeatureCollection(features)
 
 # 3. Stack Covariate Layers
-${checkedDatasets.map(d => {
-  const p = PRESETS[d] || {};
-  if (d === "srtm") {
-    return `img_${d} <- ee$Image('${p.asset || "USGS/SRTMGL1_003"}')$select('elevation')$rename('srtm_elevation')`;
-  }
-  const multChain = p.multiplier && p.multiplier !== 1 ? `$\n  multiply(${p.multiplier})` : "";
-  const offChain = p.offset ? `$\n  add(${p.offset})` : "";
-  return `img_${d} <- ee$ImageCollection('${p.asset || "UCSB-CHG/CHIRPS/DAILY"}')$
-  filterDate('${startDate}', '${endDate}')$
-  select('${p.band || "precipitation"}')$
-  ${p.reducer || "mean"}()${multChain}${offChain}$
-  rename('${d}_${p.band || "val"}')`;
-}).join("\n\n")}
+${[...presetBlocksR, ...customBlocksR].join("\n\n")}
 
-stacked <- ee$Image$cat(list(${checkedDatasets.map(d => `img_${d}`).join(", ")}))
+stacked <- ee$Image$cat(list(${allImgVarsR.join(", ")}))
 
 # 4. Extract Covariates
 extracted <- stacked$reduceRegions(
@@ -4145,10 +4735,46 @@ message("Extraction task submitted! Check progress with: ee_monitoring(task)")
 `;
         } else {
           // JavaScript (GEE Code Editor)
+          const presetBlocksJs = checkedDatasets.map(d => {
+            const p = PRESETS[d] || {};
+            if (d === "srtm") {
+              return `var img_${d} = ee.Image('${p.asset || "USGS/SRTMGL1_003"}').select(['elevation'], ['srtm_elevation']);`;
+            }
+            const multChain = p.multiplier && p.multiplier !== 1 ? `\n  .multiply(${p.multiplier})` : "";
+            const offChain = p.offset ? `\n  .add(${p.offset})` : "";
+            return `var img_${d} = ee.ImageCollection('${p.asset || "UCSB-CHG/CHIRPS/DAILY"}')
+  .filterDate('${startDate}', '${endDate}')
+  .select(['${p.band || "precipitation"}'])
+  .${p.reducer || "mean"}()${multChain}${offChain}
+  .rename('${d}_${p.band || "val"}');`;
+          });
+
+          const customBlocksJs = customVarEntries.map(({ cs, safeVar }) => {
+            const multChain = cs.multiplier && cs.multiplier !== 1 ? `\n  .multiply(${cs.multiplier})` : "";
+            const offChain = cs.offset ? `\n  .add(${cs.offset})` : "";
+            if (cs.asset_type === "Image") {
+              return `var img_${safeVar} = ee.Image('${cs.asset_id}')
+  .select(['${cs.band}'])${multChain}${offChain}
+  .rename('${safeVar}');`;
+            }
+            const redExpr = cs.temporal_reducer === "mode" ? `.reduce(ee.Reducer.mode())` : `.${cs.temporal_reducer || "mean"}()`;
+            return `var img_${safeVar} = ee.ImageCollection('${cs.asset_id}')
+  .filterDate('${startDate}', '${endDate}')
+  .select(['${cs.band}'])
+  ${redExpr}${multChain}${offChain}
+  .rename('${safeVar}');`;
+          });
+
+          const allImgVarsJs = [
+            ...checkedDatasets.map(d => `img_${d}`),
+            ...customVarEntries.map(({ safeVar }) => `img_${safeVar}`)
+          ];
+
           return `/**
  * PhyloCov Explorer - Reproducible Earth Engine Pipeline Script
  * Pipeline: Discrete Covariate Extraction for GLM / Phylogeography
- * Layers: ${checkedDatasets.join(", ")}
+ * Layers: ${allLayersDesc}
+ * Date Mode: ${dateModeDesc}
  * Generated: ${nowIso}
  * 
  * Paste directly into Google Earth Engine Code Editor:
@@ -4163,22 +4789,10 @@ var points = ee.FeatureCollection([
 ]);
 
 // 2. Prepare Covariate Layers
-${checkedDatasets.map(d => {
-  const p = PRESETS[d] || {};
-  if (d === "srtm") {
-    return `var img_${d} = ee.Image('${p.asset || "USGS/SRTMGL1_003"}').select(['elevation'], ['srtm_elevation']);`;
-  }
-  const multChain = p.multiplier && p.multiplier !== 1 ? `\n  .multiply(${p.multiplier})` : "";
-  const offChain = p.offset ? `\n  .add(${p.offset})` : "";
-  return `var img_${d} = ee.ImageCollection('${p.asset || "UCSB-CHG/CHIRPS/DAILY"}')
-  .filterDate('${startDate}', '${endDate}')
-  .select(['${p.band || "precipitation"}'])
-  .${p.reducer || "mean"}()${multChain}${offChain}
-  .rename('${d}_${p.band || "val"}');`;
-}).join("\n\n")}
+${[...presetBlocksJs, ...customBlocksJs].join("\n\n")}
 
 // 3. Stack Layers into Multi-Band Image
-var stacked = ee.Image.cat([${checkedDatasets.map(d => `img_${d}`).join(", ")}]);
+var stacked = ee.Image.cat([${allImgVarsJs.join(", ")}]);
 
 // 4. Sample Points Across Covariates
 var extracted = stacked.reduceRegions({
@@ -4196,7 +4810,7 @@ Export.table.toDrive({
   collection: extracted,
   description: 'PhyloCov_Discrete_Covariates',
   folder: 'PhyloCov_Exports',
-  fileNamePrefix: 'phylocov_discrete_covariates',
+  fileNamePrefix = 'phylocov_discrete_covariates',
   fileFormat: 'CSV'
 });
 `;
